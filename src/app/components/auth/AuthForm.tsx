@@ -39,24 +39,30 @@ export default function AuthForm({ onSuccess }: AuthFormProps) {
         setMessage('Login successful!')
         if (onSuccess) onSuccess()
 
-        } else {
+      } else {
         // Register
         const { data: authData, error: signUpError } = await supabase.auth.signUp({
-            email: data.email,
-            password: data.password,
+          email: data.email,
+          password: data.password,
+          options: {
+            data: {
+              full_name: data.fullName || '',
+              role: data.role || 'user'
+            }
+          }
         })
 
         if (signUpError) throw signUpError
 
         setMessage('Registration successful! Please check your email to confirm your account.')
         reset()
-        }
-            } catch (error: any) {
-            setMessage(error.message || 'An error occurred')
-            } finally {
-            setLoading(false)
-            }
-        }
+      }
+    } catch (error: any) {
+      setMessage(error.message || 'An error occurred')
+    } finally {
+      setLoading(false)
+    }
+  }
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-50 py-12 px-4 sm:px-6 lg:px-8">
