@@ -14,18 +14,10 @@ export default function ProtectedRoute({ children, requireApproval = false }: Pr
   const router = useRouter()
 
   useEffect(() => {
-    if (!loading) {
-      if (!isAuthenticated) {
-        router.push('/login')
-        return
-      }
-
-      if (requireApproval && !isApproved) {
-        router.push('/pending-approval')
-        return
-      }
+    if (!loading && !isAuthenticated) {
+      router.push('/login')
     }
-  }, [loading, isAuthenticated, isApproved, requireApproval, router])
+  }, [loading, isAuthenticated, router])
 
   if (loading) {
     return (
@@ -40,10 +32,6 @@ export default function ProtectedRoute({ children, requireApproval = false }: Pr
 
   if (!isAuthenticated) {
     return null // Will redirect to login
-  }
-
-  if (requireApproval && !isApproved) {
-    return null // Will redirect to pending approval page
   }
 
   return <>{children}</>

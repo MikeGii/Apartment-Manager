@@ -2,9 +2,19 @@
 
 import ProtectedRoute from '@/components/ProtectedRoute'
 import { useAuth } from '@/hooks/useAuth'
+import { useRouter } from 'next/navigation'
+import { useEffect } from 'react'
 
 export default function Dashboard() {
-  const { profile, signOut } = useAuth()
+  const { profile, signOut, loading } = useAuth()
+  const router = useRouter()
+
+    // Check if user should be redirected to pending approval
+    useEffect(() => {
+        if (!loading && profile?.status === 'pending') {
+        router.push('/pending-approval')
+        }
+    }, [loading, profile, router])
 
   const handleSignOut = async () => {
     try {
@@ -14,7 +24,12 @@ export default function Dashboard() {
     }
   }
 
-  return (
+  // Don't render dashboard if user is pending approval
+  if (profile?.status === 'pending') {
+    return null // Will redirect to pending approval
+  }
+
+return (
     <ProtectedRoute>
       <div className="min-h-screen bg-gray-50">
         {/* Header */}
