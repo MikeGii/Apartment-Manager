@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import { useForm } from 'react-hook-form'
-import { supabase } from '@/app/lib/supabase'
+import { supabase } from '@/lib/supabase'
 
 type FormData = {
   email: string
