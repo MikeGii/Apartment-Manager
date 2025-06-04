@@ -9,12 +9,12 @@ export default function Dashboard() {
   const { profile, signOut, loading } = useAuth()
   const router = useRouter()
 
-    // Check if user should be redirected to pending approval
-    useEffect(() => {
-        if (!loading && profile?.status === 'pending') {
-        router.push('/pending-approval')
-        }
-    }, [loading, profile, router])
+  // Check if user should be redirected to pending approval
+  useEffect(() => {
+    if (!loading && profile?.status === 'pending') {
+      router.push('/pending-approval')
+    }
+  }, [loading, profile, router])
 
   const handleSignOut = async () => {
     try {
@@ -29,7 +29,7 @@ export default function Dashboard() {
     return null // Will redirect to pending approval
   }
 
-return (
+  return (
     <ProtectedRoute>
       <div className="min-h-screen bg-gray-50">
         {/* Header */}
@@ -46,6 +46,14 @@ return (
                 <div className="text-xs px-2 py-1 rounded-full bg-blue-100 text-blue-800">
                   {profile?.role?.replace('_', ' ').toUpperCase()}
                 </div>
+                {profile?.role === 'admin' && (
+                  <a
+                    href="/admin"
+                    className="text-sm bg-red-600 hover:bg-red-700 text-white px-3 py-1 rounded-md transition-colors"
+                  >
+                    Admin Panel
+                  </a>
+                )}
                 <button
                   onClick={handleSignOut}
                   className="text-sm text-red-600 hover:text-red-800"
