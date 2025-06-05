@@ -1,4 +1,4 @@
-// src/app/admin/page.tsx
+// Fixed admin/page.tsx - Removed all status references
 "use client"
 
 import { useAuth } from '@/hooks/useAuth'
@@ -10,6 +10,7 @@ type Profile = {
   id: string
   email: string
   full_name: string
+  phone?: string
   role: string
   created_at: string
 }
@@ -52,12 +53,18 @@ export default function AdminDashboard() {
 
   const fetchUsers = async () => {
     try {
+      console.log('Fetching users...')
       const { data, error } = await supabase
         .from('profiles')
-        .select('*')
+        .select('id, email, full_name, phone, role, created_at')
         .order('created_at', { ascending: false })
 
-      if (error) throw error
+      if (error) {
+        console.error('Error fetching users:', error)
+        throw error
+      }
+      
+      console.log('Users fetched successfully:', data?.length || 0)
       setUsers(data || [])
     } catch (error) {
       console.error('Error fetching users:', error)
@@ -68,6 +75,7 @@ export default function AdminDashboard() {
 
   const fetchPendingAddresses = async () => {
     try {
+      console.log('Fetching pending addresses...')
       const { data, error } = await supabase
         .from('addresses')
         .select(`
@@ -94,7 +102,10 @@ export default function AdminDashboard() {
         .eq('status', 'pending')
         .order('created_at', { ascending: false })
 
-      if (error) throw error
+      if (error) {
+        console.error('Error fetching pending addresses:', error)
+        throw error
+      }
 
       // Transform the data
       const transformedData = (data || []).map((address: any) => {
@@ -117,6 +128,7 @@ export default function AdminDashboard() {
         }
       })
 
+      console.log('Pending addresses fetched successfully:', transformedData.length)
       setPendingAddresses(transformedData)
     } catch (error) {
       console.error('Error fetching pending addresses:', error)
@@ -225,6 +237,17 @@ export default function AdminDashboard() {
     }
   }
 
+  // Function to get display name for roles
+  const getRoleDisplayName = (role: string) => {
+    switch(role) {
+      case 'user': return 'Flat Owner'
+      case 'accountant': return 'Accountant'
+      case 'building_manager': return 'Building Manager'
+      case 'admin': return 'Administrator'
+      default: return role.replace('_', ' ').toUpperCase()
+    }
+  }
+
   if (loading || profile?.role !== 'admin') {
     return (
       <div className="min-h-screen flex items-center justify-center">
@@ -248,21 +271,21 @@ export default function AdminDashboard() {
               Admin Dashboard
             </h1>
             <div className="flex items-center space-x-4">
-              <div className="text-sm text-gray-500">
+              <div className="text-sm text-gray-700 font-medium">
                 Welcome back, {profile?.full_name || profile?.email}!
               </div>
-              <div className="text-xs px-2 py-1 rounded-full bg-red-100 text-red-800">
-                ADMIN
+              <div className="text-xs px-3 py-1 rounded-full bg-red-100 text-red-800 font-semibold">
+                {getRoleDisplayName(profile?.role || '')}
               </div>
               <a
                 href="/dashboard"
-                className="text-sm bg-blue-600 hover:bg-blue-700 text-white px-3 py-1 rounded-md transition-colors"
+                className="text-sm bg-blue-600 hover:bg-blue-700 text-white px-3 py-1 rounded-md transition-colors font-medium"
               >
                 Back to Dashboard
               </a>
               <button
                 onClick={handleSignOut}
-                className="text-sm text-red-600 hover:text-red-800"
+                className="text-sm text-red-600 hover:text-red-800 font-semibold"
               >
                 Sign Out
               </button>
@@ -397,14 +420,14 @@ export default function AdminDashboard() {
                             <button
                               onClick={() => updateAddressStatus(address.id, 'approved')}
                               disabled={processingAddress === address.id}
-                              className="text-green-600 hover:text-green-900 disabled:opacity-50"
+                              className="text-green-600 hover:text-green-900 disabled:opacity-50 font-medium"
                             >
                               {processingAddress === address.id ? 'Processing...' : 'Approve'}
                             </button>
                             <button
                               onClick={() => updateAddressStatus(address.id, 'rejected')}
                               disabled={processingAddress === address.id}
-                              className="text-red-600 hover:text-red-900 disabled:opacity-50"
+                              className="text-red-600 hover:text-red-900 disabled:opacity-50 font-medium"
                             >
                               Reject
                             </button>
@@ -440,6 +463,9 @@ export default function AdminDashboard() {
                           Role
                         </th>
                         <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                          Phone
+                        </th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                           Registered
                         </th>
                         <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
@@ -464,10 +490,15 @@ export default function AdminDashboard() {
                                 ? 'bg-red-100 text-red-800' 
                                 : user.role === 'building_manager'
                                 ? 'bg-purple-100 text-purple-800'
+                                : user.role === 'accountant'
+                                ? 'bg-yellow-100 text-yellow-800'
                                 : 'bg-blue-100 text-blue-800'
                             }`}>
-                              {user.role.replace('_', ' ')}
+                              {getRoleDisplayName(user.role)}
                             </span>
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                            {user.phone || 'Not provided'}
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                             {new Date(user.created_at).toLocaleDateString()}
@@ -478,14 +509,14 @@ export default function AdminDashboard() {
                                 <button
                                   onClick={() => makeBuildingManager(user.id)}
                                   disabled={processingUser === user.id}
-                                  className="text-purple-600 hover:text-purple-900 disabled:opacity-50"
+                                  className="text-purple-600 hover:text-purple-900 disabled:opacity-50 font-medium"
                                 >
                                   {processingUser === user.id ? 'Processing...' : 'Make Manager'}
                                 </button>
                                 <button
                                   onClick={() => makeAdmin(user.id)}
                                   disabled={processingUser === user.id}
-                                  className="text-red-600 hover:text-red-900 disabled:opacity-50"
+                                  className="text-red-600 hover:text-red-900 disabled:opacity-50 font-medium"
                                 >
                                   {processingUser === user.id ? 'Processing...' : 'Make Admin'}
                                 </button>
@@ -495,10 +526,28 @@ export default function AdminDashboard() {
                               <button
                                 onClick={() => makeAdmin(user.id)}
                                 disabled={processingUser === user.id}
-                                className="text-red-600 hover:text-red-900 disabled:opacity-50"
+                                className="text-red-600 hover:text-red-900 disabled:opacity-50 font-medium"
                               >
                                 {processingUser === user.id ? 'Processing...' : 'Make Admin'}
                               </button>
+                            )}
+                            {user.role === 'accountant' && (
+                              <>
+                                <button
+                                  onClick={() => makeBuildingManager(user.id)}
+                                  disabled={processingUser === user.id}
+                                  className="text-purple-600 hover:text-purple-900 disabled:opacity-50 font-medium"
+                                >
+                                  {processingUser === user.id ? 'Processing...' : 'Make Manager'}
+                                </button>
+                                <button
+                                  onClick={() => makeAdmin(user.id)}
+                                  disabled={processingUser === user.id}
+                                  className="text-red-600 hover:text-red-900 disabled:opacity-50 font-medium"
+                                >
+                                  {processingUser === user.id ? 'Processing...' : 'Make Admin'}
+                                </button>
+                              </>
                             )}
                           </td>
                         </tr>

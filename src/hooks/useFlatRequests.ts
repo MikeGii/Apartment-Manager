@@ -1,7 +1,7 @@
-// src/hooks/useFlatRequests.ts
+// Fixed useFlatRequests.ts - Prevent multiple fetches and race conditions
 "use client"
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { supabase } from '@/lib/supabase'
 
 export type FlatRequest = {
@@ -25,18 +25,33 @@ export const useFlatRequests = (userId?: string, userRole?: string) => {
   const [requests, setRequests] = useState<FlatRequest[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  
+  // Use refs to prevent multiple simultaneous fetches
+  const fetchingRef = useRef(false)
+  const lastParamsRef = useRef<{ userId?: string; userRole?: string }>({})
 
   const fetchRequests = useCallback(async () => {
     if (!userId) {
-      console.log('No userId provided, skipping fetch')
+      console.log('useFlatRequests: No userId provided, skipping fetch')
       return
     }
 
+    // Prevent multiple simultaneous fetches for the same parameters
+    const currentParams = { userId, userRole }
+    if (fetchingRef.current && 
+        lastParamsRef.current.userId === userId && 
+        lastParamsRef.current.userRole === userRole) {
+      console.log('useFlatRequests: Fetch already in progress for these params, skipping...')
+      return
+    }
+
+    fetchingRef.current = true
+    lastParamsRef.current = currentParams
     setLoading(true)
     setError(null)
     
     try {
-      console.log('Fetching requests for user:', userId, 'with role:', userRole)
+      console.log('useFlatRequests: Fetching requests for user:', userId, 'with role:', userRole)
 
       // Simple query first - get raw requests
       let baseQuery = supabase
@@ -47,9 +62,9 @@ export const useFlatRequests = (userId?: string, userRole?: string) => {
       // Filter based on user role
       if (userRole === 'user') {
         baseQuery = baseQuery.eq('user_id', userId)
-        console.log('Filtering for user requests only')
+        console.log('useFlatRequests: Filtering for user requests only')
       } else {
-        console.log('Getting all requests (building manager/admin view)')
+        console.log('useFlatRequests: Getting all requests (building manager/admin view)')
       }
 
       const { data: rawRequests, error: requestsError } = await baseQuery
@@ -59,10 +74,10 @@ export const useFlatRequests = (userId?: string, userRole?: string) => {
         throw new Error(`Failed to fetch requests: ${requestsError.message || 'Unknown error'}`)
       }
 
-      console.log('Raw requests fetched:', rawRequests?.length || 0, 'requests')
+      console.log('useFlatRequests: Raw requests fetched:', rawRequests?.length || 0, 'requests')
 
       if (!rawRequests || rawRequests.length === 0) {
-        console.log('No requests found')
+        console.log('useFlatRequests: No requests found')
         setRequests([])
         return
       }
@@ -71,7 +86,7 @@ export const useFlatRequests = (userId?: string, userRole?: string) => {
       const enrichedRequests = await Promise.all(
         rawRequests.map(async (request) => {
           try {
-            console.log('Processing request:', request.id)
+            console.log('useFlatRequests: Processing request:', request.id)
 
             // Initialize with defaults
             let unitNumber = 'Unknown'
@@ -90,7 +105,7 @@ export const useFlatRequests = (userId?: string, userRole?: string) => {
 
               if (!flatError && flatData) {
                 unitNumber = flatData.unit_number
-                console.log('Got flat data:', flatData)
+                console.log('useFlatRequests: Got flat data:', flatData)
 
                 // Get building data
                 if (flatData.building_id) {
@@ -102,7 +117,7 @@ export const useFlatRequests = (userId?: string, userRole?: string) => {
 
                   if (!buildingError && buildingData) {
                     buildingName = buildingData.name
-                    console.log('Got building data:', buildingData)
+                    console.log('useFlatRequests: Got building data:', buildingData)
 
                     // Get address data
                     if (buildingData.address) {
@@ -144,17 +159,17 @@ export const useFlatRequests = (userId?: string, userRole?: string) => {
                             }
                           }
                         } catch (locationErr) {
-                          console.warn('Could not fetch full location:', locationErr)
+                          console.warn('useFlatRequests: Could not fetch full location:', locationErr)
                         }
 
-                        console.log('Got address data, full address:', addressFull)
+                        console.log('useFlatRequests: Got address data, full address:', addressFull)
                       }
                     }
                   }
                 }
               }
             } catch (flatErr) {
-              console.warn('Error fetching flat data:', flatErr)
+              console.warn('useFlatRequests: Error fetching flat data:', flatErr)
             }
 
             // Get user data
@@ -169,10 +184,10 @@ export const useFlatRequests = (userId?: string, userRole?: string) => {
                 if (!userError && userData) {
                   userName = userData.full_name
                   userEmail = userData.email || userEmail
-                  console.log('Got user data:', userData)
+                  console.log('useFlatRequests: Got user data:', userData)
                 }
               } catch (userErr) {
-                console.warn('Error fetching user data:', userErr)
+                console.warn('useFlatRequests: Error fetching user data:', userErr)
               }
             }
 
@@ -192,7 +207,7 @@ export const useFlatRequests = (userId?: string, userRole?: string) => {
               user_email: userEmail
             }
           } catch (requestProcessingError) {
-            console.error('Error processing individual request:', request.id, requestProcessingError)
+            console.error('useFlatRequests: Error processing individual request:', request.id, requestProcessingError)
             // Return a minimal request object even if processing fails
             return {
               id: request.id,
@@ -213,7 +228,7 @@ export const useFlatRequests = (userId?: string, userRole?: string) => {
         })
       )
 
-      console.log('Successfully processed', enrichedRequests.length, 'requests')
+      console.log('useFlatRequests: Successfully processed', enrichedRequests.length, 'requests')
       setRequests(enrichedRequests)
       
     } catch (error) {
@@ -228,6 +243,7 @@ export const useFlatRequests = (userId?: string, userRole?: string) => {
       setRequests([])
     } finally {
       setLoading(false)
+      fetchingRef.current = false
     }
   }, [userId, userRole])
 
@@ -325,11 +341,13 @@ export const useFlatRequests = (userId?: string, userRole?: string) => {
     }
   }
 
+  // Only fetch when userId or userRole changes
   useEffect(() => {
-    if (userId) {
+    if (userId && (userId !== lastParamsRef.current.userId || userRole !== lastParamsRef.current.userRole)) {
+      console.log('useFlatRequests: Parameters changed, fetching requests...')
       fetchRequests()
     }
-  }, [userId, fetchRequests])
+  }, [userId, userRole, fetchRequests])
 
   return {
     requests,

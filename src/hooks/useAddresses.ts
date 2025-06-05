@@ -1,7 +1,7 @@
-// src/hooks/useAddresses.ts
+// Fixed useAddresses.ts - Prevent multiple fetches and race conditions
 "use client"
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import { supabase } from '@/lib/supabase'
 
 export type Address = {
@@ -23,13 +23,29 @@ export const useAddresses = (userId?: string) => {
   const [pendingAddresses, setPendingAddresses] = useState<Address[]>([])
   const [approvedAddresses, setApprovedAddresses] = useState<Address[]>([])
   const [loading, setLoading] = useState(false)
+  
+  // Use ref to prevent multiple simultaneous fetches
+  const fetchingRef = useRef(false)
+  const lastUserIdRef = useRef<string | undefined>(undefined)
 
-  const fetchAddresses = async () => {
-    if (!userId) return
+  const fetchAddresses = useCallback(async () => {
+    if (!userId) {
+      console.log('useAddresses: No userId provided, skipping fetch')
+      return
+    }
     
+    // Prevent multiple simultaneous fetches for the same user
+    if (fetchingRef.current && lastUserIdRef.current === userId) {
+      console.log('useAddresses: Fetch already in progress for this user, skipping...')
+      return
+    }
+
+    fetchingRef.current = true
+    lastUserIdRef.current = userId
     setLoading(true)
+    
     try {
-      console.log('Fetching addresses for user:', userId)
+      console.log('useAddresses: Fetching addresses for user:', userId)
       
       const { data, error } = await supabase
         .from('addresses')
@@ -57,7 +73,7 @@ export const useAddresses = (userId?: string) => {
         throw error
       }
 
-      console.log('Raw addresses data:', data)
+      console.log('useAddresses: Raw addresses data:', data)
 
       // Transform the data to include full address
       const transformedData = (data || []).map((address: any) => {
@@ -80,18 +96,20 @@ export const useAddresses = (userId?: string) => {
       const pending = transformedData.filter(addr => addr.status === 'pending')
       const approved = transformedData.filter(addr => addr.status === 'approved')
       
-      console.log('Pending addresses:', pending)
-      console.log('Approved addresses:', approved)
+      console.log('useAddresses: Pending addresses:', pending.length)
+      console.log('useAddresses: Approved addresses:', approved.length)
       
       setPendingAddresses(pending)
       setApprovedAddresses(approved)
 
     } catch (error) {
       console.error('Error fetching addresses:', error)
+      // Don't clear existing data on error, just log it
     } finally {
       setLoading(false)
+      fetchingRef.current = false
     }
-  }
+  }, [userId])
 
   const createAddress = async (data: AddressFormData, userId: string) => {
     try {
@@ -116,12 +134,13 @@ export const useAddresses = (userId?: string) => {
     }
   }
 
-  // Auto-fetch when userId changes
+  // Only fetch when userId changes and is valid
   useEffect(() => {
-    if (userId) {
+    if (userId && userId !== lastUserIdRef.current) {
+      console.log('useAddresses: UserId changed, fetching addresses...')
       fetchAddresses()
     }
-  }, [userId])
+  }, [userId, fetchAddresses])
 
   return {
     pendingAddresses,

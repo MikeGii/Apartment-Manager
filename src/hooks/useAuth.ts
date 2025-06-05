@@ -1,4 +1,4 @@
-// Clean useAuth.ts - Completely removed all status logic
+// Fixed useAuth.ts - Stable authentication with race condition fixes
 "use client"
 
 import { useState, useEffect, useRef } from 'react'
@@ -21,9 +21,20 @@ export function useAuth() {
   const [loading, setLoading] = useState(true)
   const [initialized, setInitialized] = useState(false)
   const [profileError, setProfileError] = useState<string | null>(null)
+  
+  // Use refs to prevent multiple simultaneous calls
   const initializingRef = useRef(false)
+  const fetchingProfileRef = useRef(false)
 
   const fetchProfile = async (userId: string) => {
+    // Prevent multiple simultaneous profile fetches
+    if (fetchingProfileRef.current) {
+      console.log('useAuth: Profile fetch already in progress, skipping...')
+      return
+    }
+
+    fetchingProfileRef.current = true
+    
     try {
       console.log('useAuth: Fetching profile for user:', userId)
       setProfileError(null)
@@ -38,9 +49,13 @@ export function useAuth() {
         console.error('Profile fetch error:', error)
         
         if (error.code === 'PGRST116') {
-          // No profile found - user exists in auth but not in profiles table
           console.warn('User authenticated but no profile found in database')
           setProfileError('PROFILE_NOT_FOUND')
+          setProfile(null)
+          return
+        } else if (error.code === '42P17') {
+          console.error('RLS infinite recursion detected - database policies need fixing')
+          setProfileError('RLS_ERROR')
           setProfile(null)
           return
         }
@@ -50,13 +65,15 @@ export function useAuth() {
         return
       }
       
-      console.log('useAuth: Profile fetched successfully:', data.role)
+      console.log('useAuth: Profile fetched successfully:', { role: data.role, email: data.email })
       setProfile(data)
       setProfileError(null)
     } catch (error) {
       console.error('Error fetching profile:', error)
       setProfileError('PROFILE_FETCH_ERROR')
       setProfile(null)
+    } finally {
+      fetchingProfileRef.current = false
     }
   }
 
@@ -70,6 +87,7 @@ export function useAuth() {
       setUser(null)
       setProfile(null)
       setProfileError(null)
+      setInitialized(false)
       console.log('useAuth: Sign out successful, state cleared')
     } catch (error) {
       console.error('useAuth: Sign out error:', error)
@@ -81,7 +99,6 @@ export function useAuth() {
     try {
       console.log('Creating missing profile for user:', user.id)
       
-      // Get data from user metadata (set during registration)
       const userRole = user.user_metadata?.role || 'user'
       const userFullName = user.user_metadata?.full_name || ''
       const userPhone = user.user_metadata?.phone || ''
@@ -143,7 +160,6 @@ export function useAuth() {
         
         console.log('useAuth: Session found:', !!session?.user, session?.user?.email)
         
-        // Simple: if user exists and email is confirmed, they're authenticated
         if (session?.user && session.user.email_confirmed_at) {
           console.log('useAuth: User is authenticated and confirmed')
           setUser(session.user)
@@ -155,24 +171,25 @@ export function useAuth() {
           setProfileError(null)
         }
         
-        setInitialized(true)
-        setLoading(false)
-        
       } catch (error) {
         console.error('useAuth: Error getting session:', error)
         if (mounted) {
           setUser(null)
           setProfile(null)
           setProfileError('SESSION_ERROR')
+        }
+      } finally {
+        if (mounted) {
           setInitialized(true)
           setLoading(false)
+          console.log('useAuth: Initialization complete')
         }
       }
     }
 
     getInitialSession()
 
-    // Timeout fallback
+    // Shorter timeout to prevent long waits
     const timeoutId = setTimeout(() => {
       if (mounted && !initialized) {
         console.warn('useAuth: Timeout reached, forcing initialization complete')
@@ -181,16 +198,14 @@ export function useAuth() {
       }
     }, 3000)
 
-    // Listen for auth changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, session) => {
         console.log('useAuth: Auth state change:', event, session?.user?.email)
         
-        if (!mounted) return
+        if (!mounted || !initialized) return
         
         clearTimeout(timeoutId)
         
-        // Handle auth events simply
         if (event === 'SIGNED_IN' && session?.user?.email_confirmed_at) {
           console.log('useAuth: User signed in')
           setUser(session.user)
@@ -203,7 +218,8 @@ export function useAuth() {
         } else if (event === 'TOKEN_REFRESHED' && session?.user) {
           console.log('useAuth: Token refreshed')
           setUser(session.user)
-          if (!profile) {
+          // Only fetch profile if we don't have one
+          if (!profile && !fetchingProfileRef.current) {
             await fetchProfile(session.user.id)
           }
         }
@@ -216,7 +232,7 @@ export function useAuth() {
       subscription.unsubscribe()
       initializingRef.current = false
     }
-  }, []) // Empty dependency array is crucial
+  }, []) // Keep empty dependency array
 
   return {
     user,
@@ -225,7 +241,7 @@ export function useAuth() {
     profileError,
     signOut,
     createMissingProfile,
-    isAuthenticated: !!user,
+    isAuthenticated: !!user && !!profile,
     hasProfile: !!profile && !profileError
   }
 }
