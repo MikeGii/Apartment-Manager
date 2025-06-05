@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useForm } from 'react-hook-form'
 import { supabase } from '@/lib/supabase'
 
@@ -9,10 +9,37 @@ type FormData = {
   password: string
   fullName?: string
   role?: string
+  county_id?: string
+  municipality_id?: string
+  settlement_id?: string
+  address_id?: string
+  flat_number?: string
 }
 
 type AuthFormProps = {
   onSuccess?: () => void
+}
+
+type County = {
+  id: string
+  name: string
+}
+
+type Municipality = {
+  id: string
+  name: string
+}
+
+type Settlement = {
+  id: string
+  name: string
+  settlement_type: string
+}
+
+type Address = {
+  id: string
+  street_and_number: string
+  full_address: string
 }
 
 export default function AuthForm({ onSuccess }: AuthFormProps) {
@@ -20,7 +47,107 @@ export default function AuthForm({ onSuccess }: AuthFormProps) {
   const [loading, setLoading] = useState(false)
   const [message, setMessage] = useState('')
   
-  const { register, handleSubmit, formState: { errors }, reset } = useForm<FormData>()
+  // Address hierarchy state
+  const [counties, setCounties] = useState<County[]>([])
+  const [municipalities, setMunicipalities] = useState<Municipality[]>([])
+  const [settlements, setSettlements] = useState<Settlement[]>([])
+  const [addresses, setAddresses] = useState<Address[]>([])
+  
+  const { register, handleSubmit, formState: { errors }, reset, watch } = useForm<FormData>()
+  
+  const watchedRole = watch('role')
+  const watchedCounty = watch('county_id')
+  const watchedMunicipality = watch('municipality_id')
+  const watchedSettlement = watch('settlement_id')
+
+  // Load counties on component mount
+  useEffect(() => {
+    loadCounties()
+  }, [])
+
+  // Load municipalities when county changes
+  useEffect(() => {
+    if (watchedCounty) {
+      loadMunicipalities(watchedCounty)
+      setSettlements([])
+      setAddresses([])
+    }
+  }, [watchedCounty])
+
+  // Load settlements when municipality changes
+  useEffect(() => {
+    if (watchedMunicipality) {
+      loadSettlements(watchedMunicipality)
+      setAddresses([])
+    }
+  }, [watchedMunicipality])
+
+  // Load addresses when settlement changes
+  useEffect(() => {
+    if (watchedSettlement) {
+      loadAddresses(watchedSettlement)
+    }
+  }, [watchedSettlement])
+
+  const loadCounties = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('counties')
+        .select('*')
+        .order('name')
+      
+      if (error) throw error
+      setCounties(data || [])
+    } catch (error) {
+      console.error('Error loading counties:', error)
+    }
+  }
+
+  const loadMunicipalities = async (countyId: string) => {
+    try {
+      const { data, error } = await supabase
+        .from('municipalities')
+        .select('*')
+        .eq('county_id', countyId)
+        .order('name')
+      
+      if (error) throw error
+      setMunicipalities(data || [])
+    } catch (error) {
+      console.error('Error loading municipalities:', error)
+    }
+  }
+
+  const loadSettlements = async (municipalityId: string) => {
+    try {
+      const { data, error } = await supabase
+        .from('settlements')
+        .select('*')
+        .eq('municipality_id', municipalityId)
+        .order('name')
+      
+      if (error) throw error
+      setSettlements(data || [])
+    } catch (error) {
+      console.error('Error loading settlements:', error)
+    }
+  }
+
+  const loadAddresses = async (settlementId: string) => {
+    try {
+      const { data, error } = await supabase
+        .from('full_addresses')
+        .select('*')
+        .eq('settlement_id', settlementId)
+        .eq('status', 'approved')
+        .order('street_and_number')
+      
+      if (error) throw error
+      setAddresses(data || [])
+    } catch (error) {
+      console.error('Error loading addresses:', error)
+    }
+  }
 
   const handleAuth = async (data: FormData) => {
     setLoading(true)
@@ -39,7 +166,7 @@ export default function AuthForm({ onSuccess }: AuthFormProps) {
         setMessage('Login successful!')
         if (onSuccess) onSuccess()
 
-      } else {
+              } else {
         // Register
         const { data: authData, error: signUpError } = await supabase.auth.signUp({
           email: data.email,
@@ -47,7 +174,9 @@ export default function AuthForm({ onSuccess }: AuthFormProps) {
           options: {
             data: {
               full_name: data.fullName || '',
-              role: data.role || 'user'
+              role: data.role || 'user',
+              address_id: data.address_id || null,
+              flat_number: data.flat_number || null
             }
           }
         })
@@ -156,6 +285,128 @@ export default function AuthForm({ onSuccess }: AuthFormProps) {
                     <p className="mt-1 text-sm text-red-600">{errors.role.message}</p>
                   )}
                 </div>
+
+                {/* Address Selection for Flat Owners */}
+                {watchedRole === 'user' && (
+                  <>
+                    <div className="space-y-4 p-4 bg-blue-50 rounded-md">
+                      <h4 className="text-sm font-medium text-blue-900">Address Information</h4>
+                      
+                      {/* County Selection */}
+                      <div>
+                        <label htmlFor="county_id" className="block text-sm font-medium text-gray-700">
+                          Maakond (County)
+                        </label>
+                        <select
+                          {...register('county_id', { required: 'Please select a county' })}
+                          className="mt-1 block w-full px-3 py-2 border border-gray-300 bg-white rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
+                        >
+                          <option value="">Select county</option>
+                          {counties.map((county) => (
+                            <option key={county.id} value={county.id}>
+                              {county.name}
+                            </option>
+                          ))}
+                        </select>
+                        {errors.county_id && (
+                          <p className="mt-1 text-sm text-red-600">{errors.county_id.message}</p>
+                        )}
+                      </div>
+
+                      {/* Municipality Selection */}
+                      {watchedCounty && (
+                        <div>
+                          <label htmlFor="municipality_id" className="block text-sm font-medium text-gray-700">
+                            Vald/Linn (Municipality)
+                          </label>
+                          <select
+                            {...register('municipality_id', { required: 'Please select a municipality' })}
+                            className="mt-1 block w-full px-3 py-2 border border-gray-300 bg-white rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
+                          >
+                            <option value="">Select municipality</option>
+                            {municipalities.map((municipality) => (
+                              <option key={municipality.id} value={municipality.id}>
+                                {municipality.name}
+                              </option>
+                            ))}
+                          </select>
+                          {errors.municipality_id && (
+                            <p className="mt-1 text-sm text-red-600">{errors.municipality_id.message}</p>
+                          )}
+                        </div>
+                      )}
+
+                      {/* Settlement Selection */}
+                      {watchedMunicipality && (
+                        <div>
+                          <label htmlFor="settlement_id" className="block text-sm font-medium text-gray-700">
+                            Asula (Settlement)
+                          </label>
+                          <select
+                            {...register('settlement_id', { required: 'Please select a settlement' })}
+                            className="mt-1 block w-full px-3 py-2 border border-gray-300 bg-white rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
+                          >
+                            <option value="">Select settlement</option>
+                            {settlements.map((settlement) => (
+                              <option key={settlement.id} value={settlement.id}>
+                                {settlement.name} ({settlement.settlement_type})
+                              </option>
+                            ))}
+                          </select>
+                          {errors.settlement_id && (
+                            <p className="mt-1 text-sm text-red-600">{errors.settlement_id.message}</p>
+                          )}
+                        </div>
+                      )}
+
+                      {/* Address Selection */}
+                      {watchedSettlement && (
+                        <div>
+                          <label htmlFor="address_id" className="block text-sm font-medium text-gray-700">
+                            Tänav ja maja number (Street and Building Number)
+                          </label>
+                          <select
+                            {...register('address_id', { required: 'Please select an address' })}
+                            className="mt-1 block w-full px-3 py-2 border border-gray-300 bg-white rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
+                          >
+                            <option value="">Select address</option>
+                            {addresses.map((address) => (
+                              <option key={address.id} value={address.id}>
+                                {address.street_and_number}
+                              </option>
+                            ))}
+                          </select>
+                          {addresses.length === 0 && (
+                            <p className="mt-1 text-sm text-amber-600">
+                              No approved addresses found for this settlement. Contact a building manager to add your address.
+                            </p>
+                          )}
+                          {errors.address_id && (
+                            <p className="mt-1 text-sm text-red-600">{errors.address_id.message}</p>
+                          )}
+                        </div>
+                      )}
+
+                      {/* Flat Number */}
+                      {watchedSettlement && (
+                        <div>
+                          <label htmlFor="flat_number" className="block text-sm font-medium text-gray-700">
+                            Korter (Flat Number)
+                          </label>
+                          <input
+                            {...register('flat_number', { required: 'Please enter your flat number' })}
+                            type="text"
+                            className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
+                            placeholder="e.g., 12, 3A, 101"
+                          />
+                          {errors.flat_number && (
+                            <p className="mt-1 text-sm text-red-600">{errors.flat_number.message}</p>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  </>
+                )}
               </>
             )}
           </div>
