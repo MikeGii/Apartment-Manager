@@ -24,3 +24,64 @@ body {
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
 }
+
+/* Enhanced form styling for better visibility */
+input[type="text"],
+input[type="email"],
+input[type="password"],
+select,
+textarea {
+  @apply text-gray-900 font-medium;
+  background-color: #ffffff !important;
+  border-color: #d1d5db !important;
+  border-width: 2px !important;
+}
+
+input[type="text"]:focus,
+input[type="email"]:focus,
+input[type="password"]:focus,
+select:focus,
+textarea:focus {
+  @apply border-blue-500 ring-2 ring-blue-500;
+  background-color: #ffffff !important;
+}
+
+input[type="text"]::placeholder,
+input[type="email"]::placeholder,
+input[type="password"]::placeholder,
+textarea::placeholder {
+  @apply text-gray-600 font-medium;
+}
+
+/* Enhanced select dropdown styling */
+select option {
+  @apply text-gray-900 font-medium bg-white;
+  padding: 8px 12px;
+}
+
+/* Enhanced label styling */
+label {
+  @apply text-gray-800 font-semibold;
+}
+
+/* Enhanced button styling */
+button {
+  @apply font-semibold;
+}
+
+/* Disabled input styling */
+input:disabled,
+select:disabled,
+textarea:disabled {
+  @apply bg-gray-100 text-gray-500 border-gray-300 cursor-not-allowed;
+}
+
+/* Enhanced error message styling */
+.text-red-600 {
+  @apply font-medium;
+}
+
+/* Enhanced success message styling */
+.text-green-800 {
+  @apply font-medium;
+}

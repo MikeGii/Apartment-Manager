@@ -1,4 +1,4 @@
-// src/components/ProtectedRoute.tsx
+// Simplified ProtectedRoute.tsx - Cleaner logic
 "use client"
 
 import { useAuth } from '@/hooks/useAuth'
@@ -12,40 +12,48 @@ interface ProtectedRouteProps {
 }
 
 export default function ProtectedRoute({ children, requiredRole }: ProtectedRouteProps) {
-  const { user, profile, loading, profileError } = useAuth()
+  const { user, profile, loading, profileError, isAuthenticated } = useAuth()
   const router = useRouter()
 
   useEffect(() => {
-    if (!loading) {
-      // If not authenticated, redirect to login
-      if (!user) {
-        console.log('ProtectedRoute: Not authenticated, redirecting to login')
-        router.push('/login')
-        return
-      }
+    // Only process after loading is complete
+    if (loading) return
 
-      // If user is authenticated but has profile errors, handle them
-      if (profileError) {
-        console.log('ProtectedRoute: Profile error detected:', profileError)
-        return // ProfileErrorHandler will render
-      }
+    console.log('ProtectedRoute: Auth check -', { 
+      isAuthenticated, 
+      hasProfile: !!profile, 
+      profileError,
+      userRole: profile?.role 
+    })
 
-      // If user is authenticated but no profile yet, wait for profile to load
-      if (!profile) {
-        console.log('ProtectedRoute: User authenticated but profile still loading')
-        return
-      }
-
-      // Check role requirements
-      if (requiredRole && profile.role !== requiredRole) {
-        console.log('ProtectedRoute: Access denied for role:', profile.role, 'required:', requiredRole)
-        router.push('/dashboard')
-        return
-      }
-
-      console.log('ProtectedRoute: Access granted for role:', profile.role)
+    // If not authenticated, redirect to login
+    if (!isAuthenticated) {
+      console.log('ProtectedRoute: Not authenticated, redirecting to login')
+      router.replace('/login')
+      return
     }
-  }, [loading, user, profile, profileError, requiredRole, router])
+
+    // If user is authenticated but has profile errors, handle them
+    if (profileError) {
+      console.log('ProtectedRoute: Profile error detected:', profileError)
+      return // ProfileErrorHandler will render
+    }
+
+    // If user is authenticated but no profile yet, wait for profile to load
+    if (!profile) {
+      console.log('ProtectedRoute: User authenticated but profile still loading')
+      return
+    }
+
+    // Check role requirements
+    if (requiredRole && profile.role !== requiredRole) {
+      console.log('ProtectedRoute: Access denied for role:', profile.role, 'required:', requiredRole)
+      router.replace('/dashboard')
+      return
+    }
+
+    console.log('ProtectedRoute: Access granted for role:', profile.role)
+  }, [loading, isAuthenticated, profile, profileError, requiredRole, router])
 
   // Show loading while checking auth
   if (loading) {
@@ -65,7 +73,7 @@ export default function ProtectedRoute({ children, requiredRole }: ProtectedRout
   }
 
   // Show loading if authenticated but no profile yet
-  if (user && !profile) {
+  if (isAuthenticated && !profile) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50">
         <div className="text-center">
@@ -77,13 +85,27 @@ export default function ProtectedRoute({ children, requiredRole }: ProtectedRout
   }
 
   // If not authenticated, don't render children (will redirect)
-  if (!user) {
-    return null
+  if (!isAuthenticated) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
+          <p className="mt-4 text-gray-600">Redirecting to login...</p>
+        </div>
+      </div>
+    )
   }
 
   // If role check fails, don't render children (will redirect)
   if (requiredRole && profile?.role !== requiredRole) {
-    return null
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
+          <p className="mt-4 text-gray-600">Redirecting...</p>
+        </div>
+      </div>
+    )
   }
 
   // All checks passed, render children

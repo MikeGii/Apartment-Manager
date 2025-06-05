@@ -1,4 +1,4 @@
-// src/components/ui/PageHeader.tsx
+// Updated PageHeader.tsx - Proper role display
 "use client"
 
 interface Profile {
@@ -14,6 +14,17 @@ interface PageHeaderProps {
 }
 
 export const PageHeader = ({ title, profile }: PageHeaderProps) => {
+  // Function to get display name for roles
+  const getRoleDisplayName = (role: string) => {
+    switch(role) {
+      case 'user': return 'Flat Owner'
+      case 'accountant': return 'Accountant'
+      case 'building_manager': return 'Building Manager'
+      case 'admin': return 'Administrator'
+      default: return role.replace('_', ' ').toUpperCase()
+    }
+  }
+
   return (
     <header className="bg-white shadow-sm border-b">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -22,18 +33,18 @@ export const PageHeader = ({ title, profile }: PageHeaderProps) => {
             {title}
           </h1>
           <div className="flex items-center space-x-4">
-            <span className="text-sm text-gray-600">
+            <span className="text-sm text-gray-700 font-medium">
               Welcome, {profile.full_name || profile.email}!
             </span>
-            <span className="text-xs px-2 py-1 rounded-full bg-blue-100 text-blue-800">
-              {profile.role.replace('_', ' ').toUpperCase()}
+            <span className="text-xs px-3 py-1 rounded-full bg-blue-100 text-blue-800 font-semibold">
+              {getRoleDisplayName(profile.role)}
             </span>
             
             {/* Navigation Links based on role */}
             {profile.role === 'user' && (
               <a
                 href="/my-flats"
-                className="text-sm bg-green-600 hover:bg-green-700 text-white px-3 py-1 rounded-md transition-colors"
+                className="text-sm bg-green-600 hover:bg-green-700 text-white px-3 py-1 rounded-md transition-colors font-medium"
               >
                 My Flats
               </a>
@@ -42,7 +53,7 @@ export const PageHeader = ({ title, profile }: PageHeaderProps) => {
             {(profile.role === 'building_manager' || profile.role === 'admin') && (
               <a
                 href="/buildings"
-                className="text-sm bg-green-600 hover:bg-green-700 text-white px-3 py-1 rounded-md transition-colors"
+                className="text-sm bg-green-600 hover:bg-green-700 text-white px-3 py-1 rounded-md transition-colors font-medium"
               >
                 Manage Buildings
               </a>
@@ -50,7 +61,7 @@ export const PageHeader = ({ title, profile }: PageHeaderProps) => {
             
             <a
               href="/dashboard"
-              className="text-sm bg-blue-600 hover:bg-blue-700 text-white px-3 py-1 rounded-md transition-colors"
+              className="text-sm bg-blue-600 hover:bg-blue-700 text-white px-3 py-1 rounded-md transition-colors font-medium"
             >
               Back to Dashboard
             </a>
@@ -58,7 +69,7 @@ export const PageHeader = ({ title, profile }: PageHeaderProps) => {
             {profile?.role === 'admin' && (
               <a
                 href="/admin"
-                className="text-sm bg-red-600 hover:bg-red-700 text-white px-3 py-1 rounded-md transition-colors"
+                className="text-sm bg-red-600 hover:bg-red-700 text-white px-3 py-1 rounded-md transition-colors font-medium"
               >
                 Admin Panel
               </a>

@@ -1,7 +1,7 @@
-// Fixed AuthForm.tsx - Addresses all 4 issues
+// Clean AuthForm.tsx - Completely removed all status logic
 "use client"
 
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { supabase } from '@/lib/supabase'
 import { useRouter } from 'next/navigation'
@@ -10,38 +10,12 @@ type FormData = {
   email: string
   password: string
   fullName?: string
+  phone?: string
   role?: string
-  county_id?: string
-  municipality_id?: string
-  settlement_id?: string
-  address_id?: string
-  flat_number?: string
 }
 
 type AuthFormProps = {
   onSuccess?: () => void
-}
-
-type County = {
-  id: string
-  name: string
-}
-
-type Municipality = {
-  id: string
-  name: string
-}
-
-type Settlement = {
-  id: string
-  name: string
-  settlement_type: string
-}
-
-type Address = {
-  id: string
-  street_and_number: string
-  full_address: string
 }
 
 export default function AuthForm({ onSuccess }: AuthFormProps) {
@@ -50,140 +24,11 @@ export default function AuthForm({ onSuccess }: AuthFormProps) {
   const [message, setMessage] = useState('')
   const router = useRouter()
   
-  // Address hierarchy state
-  const [counties, setCounties] = useState<County[]>([])
-  const [municipalities, setMunicipalities] = useState<Municipality[]>([])
-  const [settlements, setSettlements] = useState<Settlement[]>([])
-  const [addresses, setAddresses] = useState<Address[]>([])
-  
-  const { register, handleSubmit, formState: { errors }, reset, watch } = useForm<FormData>({
+  const { register, handleSubmit, formState: { errors }, reset } = useForm<FormData>({
     defaultValues: {
       role: 'user' // Set default role to 'user' (Flat Owner)
     }
   })
-  
-  const watchedRole = watch('role')
-  const watchedCounty = watch('county_id')
-  const watchedMunicipality = watch('municipality_id')
-  const watchedSettlement = watch('settlement_id')
-
-  // Load counties on component mount
-  useEffect(() => {
-    loadCounties()
-  }, [])
-
-  // Load municipalities when county changes
-  useEffect(() => {
-    if (watchedCounty) {
-      loadMunicipalities(watchedCounty)
-      setSettlements([])
-      setAddresses([])
-    }
-  }, [watchedCounty])
-
-  // Load settlements when municipality changes
-  useEffect(() => {
-    if (watchedMunicipality) {
-      loadSettlements(watchedMunicipality)
-      setAddresses([])
-    }
-  }, [watchedMunicipality])
-
-  // Load addresses when settlement changes
-  useEffect(() => {
-    if (watchedSettlement) {
-      loadAddresses(watchedSettlement)
-    }
-  }, [watchedSettlement])
-
-  const loadCounties = async () => {
-    try {
-      const { data, error } = await supabase
-        .from('counties')
-        .select('*')
-        .order('name')
-      
-      if (error) throw error
-      setCounties(data || [])
-    } catch (error) {
-      console.error('Error loading counties:', error)
-    }
-  }
-
-  const loadMunicipalities = async (countyId: string) => {
-    try {
-      const { data, error } = await supabase
-        .from('municipalities')
-        .select('*')
-        .eq('county_id', countyId)
-        .order('name')
-      
-      if (error) throw error
-      setMunicipalities(data || [])
-    } catch (error) {
-      console.error('Error loading municipalities:', error)
-    }
-  }
-
-  const loadSettlements = async (municipalityId: string) => {
-    try {
-      const { data, error } = await supabase
-        .from('settlements')
-        .select('*')
-        .eq('municipality_id', municipalityId)
-        .order('name')
-      
-      if (error) throw error
-      setSettlements(data || [])
-    } catch (error) {
-      console.error('Error loading settlements:', error)
-    }
-  }
-
-  const loadAddresses = async (settlementId: string) => {
-    try {
-      const { data, error } = await supabase
-        .from('addresses')
-        .select(`
-          id,
-          street_and_number,
-          settlements (
-            name,
-            settlement_type,
-            municipalities (
-              name,
-              counties (
-                name
-              )
-            )
-          )
-        `)
-        .eq('settlement_id', settlementId)
-        .eq('status', 'approved')
-        .order('street_and_number')
-      
-      if (error) throw error
-      
-      // Transform the data to include full address
-      const transformedData = (data || []).map((address: any) => {
-        const settlement = address.settlements
-        const municipality = settlement?.municipalities
-        const county = municipality?.counties
-        
-        return {
-          id: address.id,
-          street_and_number: address.street_and_number,
-          full_address: settlement 
-            ? `${address.street_and_number}, ${settlement.name} ${settlement.settlement_type}, ${municipality.name}, ${county.name}`
-            : address.street_and_number
-        }
-      })
-      
-      setAddresses(transformedData)
-    } catch (error) {
-      console.error('Error loading addresses:', error)
-    }
-  }
 
   const handleAuth = async (data: FormData) => {
     setLoading(true)
@@ -191,26 +36,34 @@ export default function AuthForm({ onSuccess }: AuthFormProps) {
 
     try {
       if (isLogin) {
-        // Login
+        // Login - Simple and clean
+        console.log('Attempting login for:', data.email)
+        
         const { data: authData, error } = await supabase.auth.signInWithPassword({
           email: data.email,
           password: data.password,
         })
 
-        if (error) throw error
+        if (error) {
+          console.error('Login error:', error)
+          throw error
+        }
 
-        setMessage('Login successful!')
+        console.log('Login successful, user:', authData.user?.email)
+        setMessage('Login successful! Redirecting...')
         
-        // Redirect to dashboard after successful login
+        // Use Next.js router for proper navigation
         setTimeout(() => {
-          router.push('/dashboard')
-        }, 1000)
-
-        if (onSuccess) onSuccess()
+          if (onSuccess) {
+            onSuccess()
+          } else {
+            router.push('/dashboard')
+          }
+        }, 500)
 
       } else {
-        // Register - Use the selected role from the form
-        const selectedRole = data.role || 'user'
+        // Register - Simple and clean
+        console.log('Attempting registration for:', data.email)
         
         const { data: authData, error: signUpError } = await supabase.auth.signUp({
           email: data.email,
@@ -218,34 +71,30 @@ export default function AuthForm({ onSuccess }: AuthFormProps) {
           options: {
             data: {
               full_name: data.fullName || '',
-              role: selectedRole, // Use the role selected in the form
-              address_id: data.address_id || null,
-              flat_number: data.flat_number || null
+              phone: data.phone || '',
+              role: data.role || 'user'
             }
           }
         })
 
-        if (signUpError) throw signUpError
+        if (signUpError) {
+          console.error('Registration error:', signUpError)
+          throw signUpError
+        }
 
-        setMessage('Registration successful! Please check your email to confirm your account.')
+        console.log('Registration successful for:', authData.user?.email)
+        setMessage('Registration successful! Please check your email to confirm your account, then you can login.')
+        
+        // Reset form after successful registration
         reset({
-          role: 'user' // Reset with default role
+          role: 'user'
         })
       }
     } catch (error: any) {
-      setMessage(error.message || 'An error occurred')
+      console.error('Auth error:', error)
+      setMessage(error.message || 'An error occurred during authentication')
     } finally {
       setLoading(false)
-    }
-  }
-
-  // Function to get display name for roles
-  const getRoleDisplayName = (role: string) => {
-    switch(role) {
-      case 'user': return 'Flat Owner'
-      case 'accountant': return 'Accountant'
-      case 'building_manager': return 'Building Manager'
-      default: return role
     }
   }
 
@@ -316,11 +165,38 @@ export default function AuthForm({ onSuccess }: AuthFormProps) {
                     Full Name
                   </label>
                   <input
-                    {...register('fullName')}
+                    {...register('fullName', {
+                      required: 'Full name is required'
+                    })}
                     type="text"
                     className="mt-1 appearance-none relative block w-full px-3 py-3 border-2 border-gray-300 placeholder-gray-600 text-gray-900 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 focus:z-10 sm:text-sm font-medium bg-white"
                     placeholder="Your full name"
                   />
+                  {errors.fullName && (
+                    <p className="mt-1 text-sm text-red-600 font-medium">{errors.fullName.message}</p>
+                  )}
+                </div>
+
+                {/* Phone Number Field */}
+                <div>
+                  <label htmlFor="phone" className="block text-sm font-semibold text-gray-800">
+                    Phone Number
+                  </label>
+                  <input
+                    {...register('phone', {
+                      required: 'Phone number is required',
+                      pattern: {
+                        value: /^[\+]?[0-9\s\-\(\)]{8,}$/,
+                        message: 'Please enter a valid phone number'
+                      }
+                    })}
+                    type="tel"
+                    className="mt-1 appearance-none relative block w-full px-3 py-3 border-2 border-gray-300 placeholder-gray-600 text-gray-900 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 focus:z-10 sm:text-sm font-medium bg-white"
+                    placeholder="Your phone number"
+                  />
+                  {errors.phone && (
+                    <p className="mt-1 text-sm text-red-600 font-medium">{errors.phone.message}</p>
+                  )}
                 </div>
 
                 {/* Role Selection */}
@@ -340,128 +216,6 @@ export default function AuthForm({ onSuccess }: AuthFormProps) {
                     <p className="mt-1 text-sm text-red-600 font-medium">{errors.role.message}</p>
                   )}
                 </div>
-
-                {/* Address Selection for Flat Owners */}
-                {watchedRole === 'user' && (
-                  <>
-                    <div className="space-y-4 p-4 bg-blue-50 rounded-md border-2 border-blue-200">
-                      <h4 className="text-sm font-semibold text-blue-900">Address Information</h4>
-                      
-                      {/* County Selection */}
-                      <div>
-                        <label htmlFor="county_id" className="block text-sm font-semibold text-gray-800">
-                          Maakond (County)
-                        </label>
-                        <select
-                          {...register('county_id', { required: 'Please select a county' })}
-                          className="mt-1 block w-full px-3 py-3 border-2 border-gray-300 bg-white rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 sm:text-sm font-medium text-gray-900"
-                        >
-                          <option value="">Select county</option>
-                          {counties.map((county) => (
-                            <option key={county.id} value={county.id}>
-                              {county.name}
-                            </option>
-                          ))}
-                        </select>
-                        {errors.county_id && (
-                          <p className="mt-1 text-sm text-red-600 font-medium">{errors.county_id.message}</p>
-                        )}
-                      </div>
-
-                      {/* Municipality Selection */}
-                      {watchedCounty && (
-                        <div>
-                          <label htmlFor="municipality_id" className="block text-sm font-semibold text-gray-800">
-                            Vald/Linn (Municipality)
-                          </label>
-                          <select
-                            {...register('municipality_id', { required: 'Please select a municipality' })}
-                            className="mt-1 block w-full px-3 py-3 border-2 border-gray-300 bg-white rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 sm:text-sm font-medium text-gray-900"
-                          >
-                            <option value="">Select municipality</option>
-                            {municipalities.map((municipality) => (
-                              <option key={municipality.id} value={municipality.id}>
-                                {municipality.name}
-                              </option>
-                            ))}
-                          </select>
-                          {errors.municipality_id && (
-                            <p className="mt-1 text-sm text-red-600 font-medium">{errors.municipality_id.message}</p>
-                          )}
-                        </div>
-                      )}
-
-                      {/* Settlement Selection */}
-                      {watchedMunicipality && (
-                        <div>
-                          <label htmlFor="settlement_id" className="block text-sm font-semibold text-gray-800">
-                            Asula (Settlement)
-                          </label>
-                          <select
-                            {...register('settlement_id', { required: 'Please select a settlement' })}
-                            className="mt-1 block w-full px-3 py-3 border-2 border-gray-300 bg-white rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 sm:text-sm font-medium text-gray-900"
-                          >
-                            <option value="">Select settlement</option>
-                            {settlements.map((settlement) => (
-                              <option key={settlement.id} value={settlement.id}>
-                                {settlement.name} ({settlement.settlement_type})
-                              </option>
-                            ))}
-                          </select>
-                          {errors.settlement_id && (
-                            <p className="mt-1 text-sm text-red-600 font-medium">{errors.settlement_id.message}</p>
-                          )}
-                        </div>
-                      )}
-
-                      {/* Address Selection */}
-                      {watchedSettlement && (
-                        <div>
-                          <label htmlFor="address_id" className="block text-sm font-semibold text-gray-800">
-                            Tänav ja maja number (Street and Building Number)
-                          </label>
-                          <select
-                            {...register('address_id', { required: 'Please select an address' })}
-                            className="mt-1 block w-full px-3 py-3 border-2 border-gray-300 bg-white rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 sm:text-sm font-medium text-gray-900"
-                          >
-                            <option value="">Select address</option>
-                            {addresses.map((address) => (
-                              <option key={address.id} value={address.id}>
-                                {address.street_and_number}
-                              </option>
-                            ))}
-                          </select>
-                          {addresses.length === 0 && (
-                            <p className="mt-1 text-sm text-amber-600 font-medium">
-                              No approved addresses found for this settlement. Contact a building manager to add your address.
-                            </p>
-                          )}
-                          {errors.address_id && (
-                            <p className="mt-1 text-sm text-red-600 font-medium">{errors.address_id.message}</p>
-                          )}
-                        </div>
-                      )}
-
-                      {/* Flat Number */}
-                      {watchedSettlement && (
-                        <div>
-                          <label htmlFor="flat_number" className="block text-sm font-semibold text-gray-800">
-                            Korter (Flat Number)
-                          </label>
-                          <input
-                            {...register('flat_number', { required: 'Please enter your flat number' })}
-                            type="text"
-                            className="mt-1 block w-full px-3 py-3 border-2 border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 sm:text-sm font-medium bg-white text-gray-900"
-                            placeholder="e.g., 12, 3A, 101"
-                          />
-                          {errors.flat_number && (
-                            <p className="mt-1 text-sm text-red-600 font-medium">{errors.flat_number.message}</p>
-                          )}
-                        </div>
-                      )}
-                    </div>
-                  </>
-                )}
               </>
             )}
           </div>
@@ -496,7 +250,7 @@ export default function AuthForm({ onSuccess }: AuthFormProps) {
                 setIsLogin(!isLogin)
                 setMessage('')
                 reset({
-                  role: 'user' // Reset with default role
+                  role: 'user'
                 })
               }}
               className="text-blue-600 hover:text-blue-500 text-sm font-medium"

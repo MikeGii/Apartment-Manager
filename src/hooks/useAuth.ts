@@ -1,4 +1,4 @@
-// Fixed useAuth.ts - Properly handles role selection during registration
+// Clean useAuth.ts - Completely removed all status logic
 "use client"
 
 import { useState, useEffect, useRef } from 'react'
@@ -9,6 +9,7 @@ type Profile = {
   id: string
   email: string
   full_name: string
+  phone?: string
   role: string
   created_at: string
   updated_at: string
@@ -34,17 +35,10 @@ export function useAuth() {
         .single()
 
       if (error) {
-        console.error('Profile fetch error:', {
-          error,
-          code: error.code,
-          message: error.message,
-          details: error.details,
-          hint: error.hint
-        })
+        console.error('Profile fetch error:', error)
         
-        // Handle specific error cases
         if (error.code === 'PGRST116') {
-          // No profile found - this means user exists in auth but not in profiles table
+          // No profile found - user exists in auth but not in profiles table
           console.warn('User authenticated but no profile found in database')
           setProfileError('PROFILE_NOT_FOUND')
           setProfile(null)
@@ -87,14 +81,17 @@ export function useAuth() {
     try {
       console.log('Creating missing profile for user:', user.id)
       
-      // Get the role from user metadata (set during registration)
+      // Get data from user metadata (set during registration)
       const userRole = user.user_metadata?.role || 'user'
+      const userFullName = user.user_metadata?.full_name || ''
+      const userPhone = user.user_metadata?.phone || ''
       
       const profileData = {
         id: user.id,
         email: user.email || '',
-        full_name: user.user_metadata?.full_name || '',
-        role: userRole // Use the role from registration metadata
+        full_name: userFullName,
+        phone: userPhone,
+        role: userRole
       }
 
       console.log('Creating profile with data:', profileData)
@@ -144,18 +141,21 @@ export function useAuth() {
         
         if (!mounted) return
         
-        console.log('useAuth: Initial session result:', !!session?.user, session?.user?.email)
-        setUser(session?.user ?? null)
+        console.log('useAuth: Session found:', !!session?.user, session?.user?.email)
         
-        if (session?.user) {
+        // Simple: if user exists and email is confirmed, they're authenticated
+        if (session?.user && session.user.email_confirmed_at) {
+          console.log('useAuth: User is authenticated and confirmed')
+          setUser(session.user)
           await fetchProfile(session.user.id)
         } else {
+          console.log('useAuth: No authenticated user or email not confirmed')
+          setUser(null)
           setProfile(null)
           setProfileError(null)
         }
         
         setInitialized(true)
-        console.log('useAuth: Initialization complete, setting loading to false')
         setLoading(false)
         
       } catch (error) {
@@ -188,22 +188,24 @@ export function useAuth() {
         
         if (!mounted) return
         
-        // Clear the timeout since we got an auth event
         clearTimeout(timeoutId)
         
-        // Only process auth changes after initial load is complete
-        if (initialized) {
-          console.log('useAuth: Processing auth change after initialization')
-          setUser(session?.user ?? null)
-          
-          if (session?.user) {
+        // Handle auth events simply
+        if (event === 'SIGNED_IN' && session?.user?.email_confirmed_at) {
+          console.log('useAuth: User signed in')
+          setUser(session.user)
+          await fetchProfile(session.user.id)
+        } else if (event === 'SIGNED_OUT') {
+          console.log('useAuth: User signed out')
+          setUser(null)
+          setProfile(null)
+          setProfileError(null)
+        } else if (event === 'TOKEN_REFRESHED' && session?.user) {
+          console.log('useAuth: Token refreshed')
+          setUser(session.user)
+          if (!profile) {
             await fetchProfile(session.user.id)
-          } else {
-            setProfile(null)
-            setProfileError(null)
           }
-        } else {
-          console.log('useAuth: Skipping auth change - not yet initialized')
         }
       }
     )
