@@ -1,3 +1,4 @@
+// src/app/admin/page.tsx
 "use client"
 
 import { useAuth } from '@/hooks/useAuth'
@@ -10,7 +11,6 @@ type Profile = {
   email: string
   full_name: string
   role: string
-  status: string
   created_at: string
 }
 
@@ -125,38 +125,13 @@ export default function AdminDashboard() {
     }
   }
 
-  const updateUserStatus = async (userId: string, newStatus: 'approved' | 'rejected') => {
-    setProcessingUser(userId)
-    try {
-      const { error } = await supabase
-        .from('profiles')
-        .update({ status: newStatus, updated_at: new Date().toISOString() })
-        .eq('id', userId)
-
-      if (error) throw error
-
-      // Update local state
-      setUsers(users.map(user => 
-        user.id === userId ? { ...user, status: newStatus } : user
-      ))
-
-      alert(`User ${newStatus} successfully!`)
-    } catch (error) {
-      console.error('Error updating user status:', error)
-      alert('Error updating user status')
-    } finally {
-      setProcessingUser(null)
-    }
-  }
-
   const makeAdmin = async (userId: string) => {
     setProcessingUser(userId)
     try {
       const { error } = await supabase
         .from('profiles')
         .update({ 
-          role: 'admin', 
-          status: 'approved',
+          role: 'admin',
           updated_at: new Date().toISOString() 
         })
         .eq('id', userId)
@@ -165,13 +140,40 @@ export default function AdminDashboard() {
 
       // Update local state
       setUsers(users.map(user => 
-        user.id === userId ? { ...user, role: 'admin', status: 'approved' } : user
+        user.id === userId ? { ...user, role: 'admin' } : user
       ))
 
       alert('User promoted to admin successfully!')
     } catch (error) {
       console.error('Error promoting user to admin:', error)
       alert('Error promoting user to admin')
+    } finally {
+      setProcessingUser(null)
+    }
+  }
+
+  const makeBuildingManager = async (userId: string) => {
+    setProcessingUser(userId)
+    try {
+      const { error } = await supabase
+        .from('profiles')
+        .update({ 
+          role: 'building_manager',
+          updated_at: new Date().toISOString() 
+        })
+        .eq('id', userId)
+
+      if (error) throw error
+
+      // Update local state
+      setUsers(users.map(user => 
+        user.id === userId ? { ...user, role: 'building_manager' } : user
+      ))
+
+      alert('User promoted to building manager successfully!')
+    } catch (error) {
+      console.error('Error promoting user to building manager:', error)
+      alert('Error promoting user to building manager')
     } finally {
       setProcessingUser(null)
     }
@@ -214,7 +216,7 @@ export default function AdminDashboard() {
       // Remove from pending list
       setPendingAddresses(pendingAddresses.filter(addr => addr.id !== addressId))
 
-      alert(`Address ${newStatus} successfully!${newStatus === 'approved' ? ' Building will be created automatically.' : ''}`)
+      alert(`Address ${newStatus} successfully!${newStatus === 'approved' ? ' Building managers can now add flats to this address.' : ''}`)
     } catch (error: any) {
       console.error('Error updating address status:', error)
       alert(`Error updating address status: ${error.message || 'Unknown error'}`)
@@ -234,7 +236,6 @@ export default function AdminDashboard() {
     )
   }
 
-  const pendingUsers = users.filter(user => user.status === 'pending')
   const allUsers = users
 
   return (
@@ -274,7 +275,7 @@ export default function AdminDashboard() {
         <div className="px-4 py-6 sm:px-0">
           
           {/* Stats */}
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
             <div className="bg-white overflow-hidden shadow rounded-lg">
               <div className="p-5">
                 <div className="flex items-center">
@@ -287,44 +288,6 @@ export default function AdminDashboard() {
                     <dl>
                       <dt className="text-sm font-medium text-gray-500 truncate">Total Users</dt>
                       <dd className="text-lg font-medium text-gray-900">{allUsers.length}</dd>
-                    </dl>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <div className="bg-white overflow-hidden shadow rounded-lg">
-              <div className="p-5">
-                <div className="flex items-center">
-                  <div className="flex-shrink-0">
-                    <div className="w-8 h-8 bg-yellow-500 rounded-full flex items-center justify-center">
-                      <span className="text-white font-semibold">⏳</span>
-                    </div>
-                  </div>
-                  <div className="ml-5 w-0 flex-1">
-                    <dl>
-                      <dt className="text-sm font-medium text-gray-500 truncate">Pending Approval</dt>
-                      <dd className="text-lg font-medium text-gray-900">{pendingUsers.length}</dd>
-                    </dl>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <div className="bg-white overflow-hidden shadow rounded-lg">
-              <div className="p-5">
-                <div className="flex items-center">
-                  <div className="flex-shrink-0">
-                    <div className="w-8 h-8 bg-green-500 rounded-full flex items-center justify-center">
-                      <span className="text-white font-semibold">✓</span>
-                    </div>
-                  </div>
-                  <div className="ml-5 w-0 flex-1">
-                    <dl>
-                      <dt className="text-sm font-medium text-gray-500 truncate">Approved</dt>
-                      <dd className="text-lg font-medium text-gray-900">
-                        {allUsers.filter(u => u.status === 'approved').length}
-                      </dd>
                     </dl>
                   </div>
                 </div>
@@ -350,84 +313,47 @@ export default function AdminDashboard() {
                 </div>
               </div>
             </div>
-          </div>
 
-          {/* Pending Approvals */}
-          {pendingUsers.length > 0 && (
-            <div className="bg-white shadow rounded-lg mb-8">
-              <div className="px-4 py-5 sm:p-6">
-                <h3 className="text-lg leading-6 font-medium text-gray-900 mb-4">
-                  Pending User Approvals ({pendingUsers.length})
-                </h3>
-                <div className="overflow-x-auto">
-                  <table className="min-w-full divide-y divide-gray-200">
-                    <thead className="bg-gray-50">
-                      <tr>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                          User
-                        </th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                          Role
-                        </th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                          Registered
-                        </th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                          Actions
-                        </th>
-                      </tr>
-                    </thead>
-                    <tbody className="bg-white divide-y divide-gray-200">
-                      {pendingUsers.map((user) => (
-                        <tr key={user.id}>
-                          <td className="px-6 py-4 whitespace-nowrap">
-                            <div>
-                              <div className="text-sm font-medium text-gray-900">
-                                {user.full_name || 'No name provided'}
-                              </div>
-                              <div className="text-sm text-gray-500">{user.email}</div>
-                            </div>
-                          </td>
-                          <td className="px-6 py-4 whitespace-nowrap">
-                            <span className="inline-flex px-2 py-1 text-xs font-semibold rounded-full bg-blue-100 text-blue-800 capitalize">
-                              {user.role.replace('_', ' ')}
-                            </span>
-                          </td>
-                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                            {new Date(user.created_at).toLocaleDateString()}
-                          </td>
-                          <td className="px-6 py-4 whitespace-nowrap text-sm font-medium space-x-2">
-                            <button
-                              onClick={() => updateUserStatus(user.id, 'approved')}
-                              disabled={processingUser === user.id}
-                              className="text-green-600 hover:text-green-900 disabled:opacity-50"
-                            >
-                              {processingUser === user.id ? 'Processing...' : 'Approve'}
-                            </button>
-                            <button
-                              onClick={() => updateUserStatus(user.id, 'rejected')}
-                              disabled={processingUser === user.id}
-                              className="text-red-600 hover:text-red-900 disabled:opacity-50"
-                            >
-                              Reject
-                            </button>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
+            <div className="bg-white overflow-hidden shadow rounded-lg">
+              <div className="p-5">
+                <div className="flex items-center">
+                  <div className="flex-shrink-0">
+                    <div className="w-8 h-8 bg-yellow-500 rounded-full flex items-center justify-center">
+                      <span className="text-white font-semibold">📍</span>
+                    </div>
+                  </div>
+                  <div className="ml-5 w-0 flex-1">
+                    <dl>
+                      <dt className="text-sm font-medium text-gray-500 truncate">Pending Addresses</dt>
+                      <dd className="text-lg font-medium text-gray-900">{pendingAddresses.length}</dd>
+                    </dl>
+                  </div>
                 </div>
               </div>
             </div>
-          )}
+          </div>
 
           {/* Pending Address Approvals */}
-          {pendingAddresses.length > 0 && (
-            <div className="bg-white shadow rounded-lg mb-8">
-              <div className="px-4 py-5 sm:p-6">
-                <h3 className="text-lg leading-6 font-medium text-gray-900 mb-4">
-                  Pending Address Approvals ({pendingAddresses.length})
-                </h3>
+          <div className="bg-white shadow rounded-lg mb-8">
+            <div className="px-4 py-5 sm:p-6">
+              <h3 className="text-lg leading-6 font-medium text-gray-900 mb-4">
+                Pending Address Approvals ({pendingAddresses.length})
+              </h3>
+              {loadingAddresses ? (
+                <div className="text-center py-4">
+                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto"></div>
+                </div>
+              ) : pendingAddresses.length === 0 ? (
+                <div className="text-center py-8 px-4 border-2 border-dashed border-gray-300 rounded-lg">
+                  <div className="text-gray-400 mb-2">
+                    <svg className="mx-auto h-12 w-12" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+                    </svg>
+                  </div>
+                  <p className="text-gray-500 text-sm">No pending address approvals</p>
+                </div>
+              ) : (
                 <div className="overflow-x-auto">
                   <table className="min-w-full divide-y divide-gray-200">
                     <thead className="bg-gray-50">
@@ -488,15 +414,15 @@ export default function AdminDashboard() {
                     </tbody>
                   </table>
                 </div>
-              </div>
+              )}
             </div>
-          )}
+          </div>
 
           {/* All Users */}
           <div className="bg-white shadow rounded-lg">
             <div className="px-4 py-5 sm:p-6">
               <h3 className="text-lg leading-6 font-medium text-gray-900 mb-4">
-                All Users ({allUsers.length})
+                User Management ({allUsers.length})
               </h3>
               {loadingUsers ? (
                 <div className="text-center py-4">
@@ -512,9 +438,6 @@ export default function AdminDashboard() {
                         </th>
                         <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                           Role
-                        </th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                          Status
                         </th>
                         <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                           Registered
@@ -539,31 +462,40 @@ export default function AdminDashboard() {
                             <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full capitalize ${
                               user.role === 'admin' 
                                 ? 'bg-red-100 text-red-800' 
+                                : user.role === 'building_manager'
+                                ? 'bg-purple-100 text-purple-800'
                                 : 'bg-blue-100 text-blue-800'
                             }`}>
                               {user.role.replace('_', ' ')}
                             </span>
                           </td>
-                          <td className="px-6 py-4 whitespace-nowrap">
-                            <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
-                              user.status === 'approved' 
-                                ? 'bg-green-100 text-green-800'
-                                : user.status === 'pending'
-                                ? 'bg-yellow-100 text-yellow-800'
-                                : 'bg-red-100 text-red-800'
-                            }`}>
-                              {user.status}
-                            </span>
-                          </td>
                           <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                             {new Date(user.created_at).toLocaleDateString()}
                           </td>
-                          <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                            {user.role !== 'admin' && (
+                          <td className="px-6 py-4 whitespace-nowrap text-sm font-medium space-x-2">
+                            {user.role === 'user' && (
+                              <>
+                                <button
+                                  onClick={() => makeBuildingManager(user.id)}
+                                  disabled={processingUser === user.id}
+                                  className="text-purple-600 hover:text-purple-900 disabled:opacity-50"
+                                >
+                                  {processingUser === user.id ? 'Processing...' : 'Make Manager'}
+                                </button>
+                                <button
+                                  onClick={() => makeAdmin(user.id)}
+                                  disabled={processingUser === user.id}
+                                  className="text-red-600 hover:text-red-900 disabled:opacity-50"
+                                >
+                                  {processingUser === user.id ? 'Processing...' : 'Make Admin'}
+                                </button>
+                              </>
+                            )}
+                            {user.role === 'building_manager' && (
                               <button
                                 onClick={() => makeAdmin(user.id)}
                                 disabled={processingUser === user.id}
-                                className="text-purple-600 hover:text-purple-900 disabled:opacity-50"
+                                className="text-red-600 hover:text-red-900 disabled:opacity-50"
                               >
                                 {processingUser === user.id ? 'Processing...' : 'Make Admin'}
                               </button>
