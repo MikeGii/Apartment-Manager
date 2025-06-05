@@ -45,6 +45,7 @@ export const useUserFlats = (userId?: string) => {
           tenant_id,
           buildings!inner (
             name,
+            address,
             addresses!inner (
               id,
               street_and_number,
@@ -64,15 +65,22 @@ export const useUserFlats = (userId?: string) => {
         .eq('tenant_id', userId)
         .order('unit_number')
 
-      if (error) throw error
+      console.log('Raw user flats query result:', { data, error })
+
+      if (error) {
+        console.error('Error fetching user flats:', error)
+        throw error
+      }
 
       // Transform the data
       const transformedFlats = (data || []).map((flat: any) => {
         const building = flat.buildings
         const address = building?.addresses
         const settlement = address?.settlements
-        const municipality = settlement?.municipalities
-        const county = municipality?.counties
+        const municipality = settlement?.municipalities?.[0]
+        const county = municipality?.counties?.[0]
+        
+        console.log('Transforming flat:', { flat, building, address, settlement })
         
         return {
           id: flat.id,
@@ -102,7 +110,7 @@ export const useUserFlats = (userId?: string) => {
     setError(null)
     
     try {
-      console.log('Registering flat for user:', { data, userId })
+      console.log('Creating registration request for user:', { data, userId })
 
       // First, find the address
       const { data: addressData, error: addressError } = await supabase
@@ -199,26 +207,44 @@ export const useUserFlats = (userId?: string) => {
         throw new Error(`Flat ${data.unit_number} is already occupied by another tenant.`)
       }
 
-      // Register the user as tenant of this flat
-      const { error: updateError } = await supabase
-        .from('flats')
-        .update({ tenant_id: userId })
-        .eq('id', flatData.id)
+      // Check if user already has a pending request for this flat
+      const { data: existingRequest } = await supabase
+        .from('flat_registration_requests')
+        .select('id, status')
+        .eq('flat_id', flatData.id)
+        .eq('user_id', userId)
+        .single()
 
-      if (updateError) {
-        console.error('Update error:', updateError)
-        throw updateError
+      if (existingRequest) {
+        if (existingRequest.status === 'pending') {
+          throw new Error(`You already have a pending registration request for flat ${data.unit_number}. Please wait for building management approval.`)
+        } else if (existingRequest.status === 'rejected') {
+          throw new Error(`Your previous request for flat ${data.unit_number} was rejected. Please contact building management.`)
+        }
       }
 
-      console.log('Flat registered successfully')
+      // Create registration request instead of directly assigning tenant
+      const { error: requestError } = await supabase
+        .from('flat_registration_requests')
+        .insert({
+          flat_id: flatData.id,
+          user_id: userId
+        })
+
+      if (requestError) {
+        console.error('Request creation error:', requestError)
+        throw requestError
+      }
+
+      console.log('Registration request created successfully')
       
-      // Refresh user flats
+      // Refresh user flats (will now show pending requests)
       await fetchUserFlats()
       
-      return { success: true, message: 'Flat registered successfully!' }
+      return { success: true, message: 'Registration request submitted successfully! Building manager will review and approve your request.' }
     } catch (error) {
-      console.error('Error registering flat:', error)
-      const errorMessage = error instanceof Error ? error.message : 'Error registering flat'
+      console.error('Error creating registration request:', error)
+      const errorMessage = error instanceof Error ? error.message : 'Error submitting registration request'
       setError(errorMessage)
       return { success: false, message: errorMessage }
     }
