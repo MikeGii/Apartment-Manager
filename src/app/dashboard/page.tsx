@@ -18,9 +18,12 @@ export default function Dashboard() {
 
   const handleSignOut = async () => {
     try {
+      console.log('Dashboard - Signing out...')
       await signOut()
+      console.log('Dashboard - Sign out successful, redirecting to login')
+      router.push('/login')
     } catch (error) {
-      console.error('Error signing out:', error)
+      console.error('Dashboard - Sign out error:', error)
     }
   }
 

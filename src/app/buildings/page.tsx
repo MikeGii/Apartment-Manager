@@ -65,7 +65,7 @@ type Address = {
 }
 
 export default function BuildingsManagement() {
-  const { profile, loading } = useAuth()
+  const { profile, loading, isAuthenticated } = useAuth()
   const router = useRouter()
   const [buildings, setBuildings] = useState<Building[]>([])
   const [flats, setFlats] = useState<Flat[]>([])
@@ -89,25 +89,41 @@ export default function BuildingsManagement() {
   const watchedCounty = addressForm.watch('county_id')
   const watchedMunicipality = addressForm.watch('municipality_id')
 
-  // Redirect if not building manager or admin
+  // Access control - redirect if not authorized
   useEffect(() => {
-    if (!loading && profile) {
-      if (profile.role !== 'building_manager' && profile.role !== 'admin') {
-        console.log('Redirecting - not building manager or admin')
-        router.push('/dashboard')
+    if (!loading) {
+      console.log('Buildings - Auth complete, checking access...')
+      
+      if (!isAuthenticated) {
+        console.log('Buildings - Not authenticated, redirecting to login')
+        router.replace('/login')
+        return
       }
-    }
-  }, [loading, profile, router])
 
-  // Fetch buildings and addresses
+      if (!profile) {
+        console.log('Buildings - No profile found')
+        return
+      }
+
+      if (profile.role !== 'building_manager' && profile.role !== 'admin') {
+        console.log('Buildings - Access denied for role:', profile.role)
+        router.replace('/dashboard')
+        return
+      }
+
+      console.log('Buildings - Access granted for role:', profile.role)
+    }
+  }, [loading, isAuthenticated, profile, router])
+
+  // Data fetching - only after access is confirmed
   useEffect(() => {
-    if (profile && (profile.role === 'building_manager' || profile.role === 'admin')) {
-      console.log('Fetching building data for:', profile.role)
+    if (!loading && profile && (profile.role === 'building_manager' || profile.role === 'admin')) {
+      console.log('Buildings - Starting data fetch for:', profile.role)
       fetchBuildings()
       loadCounties()
       fetchMyAddresses()
     }
-  }, [profile])
+  }, [loading, profile])
 
   // Load municipalities when county changes
   useEffect(() => {
@@ -340,6 +356,7 @@ export default function BuildingsManagement() {
     fetchFlats(buildingId)
   }
 
+  // Show loading while checking auth
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
@@ -351,19 +368,21 @@ export default function BuildingsManagement() {
     )
   }
 
-  if (!profile) {
+  // Show loading if not authenticated or no profile
+  if (!isAuthenticated || !profile) {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <div className="text-center">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
-          <p className="mt-4 text-gray-600">Loading profile...</p>
+          <p className="mt-4 text-gray-600">Checking access...</p>
         </div>
       </div>
     )
   }
 
+  // Check access
   if (profile.role !== 'building_manager' && profile.role !== 'admin') {
-    return null // Will redirect to dashboard
+    return null // Will redirect
   }
 
   const selectedBuildingData = buildings.find(b => b.id === selectedBuilding)
@@ -378,6 +397,12 @@ export default function BuildingsManagement() {
               Building Management
             </h1>
             <div className="flex items-center space-x-4">
+              <span className="text-sm text-gray-600">
+                Welcome, {profile.full_name || profile.email}!
+              </span>
+              <span className="text-xs px-2 py-1 rounded-full bg-blue-100 text-blue-800">
+                {profile.role.replace('_', ' ').toUpperCase()}
+              </span>
               <a
                 href="/dashboard"
                 className="text-sm bg-blue-600 hover:bg-blue-700 text-white px-3 py-1 rounded-md transition-colors"
@@ -676,7 +701,9 @@ export default function BuildingsManagement() {
                               type="button"
                               onClick={() => setShowFlatForm(false)}
                               className="bg-gray-600 hover:bg-gray-700 text-white px-4 py-2 rounded-md text-sm font-medium"
-                            />
+                            >
+                              Cancel
+                            </button>
                           </div>
                         </form>
                       </div>

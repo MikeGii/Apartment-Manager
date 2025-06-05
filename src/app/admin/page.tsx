@@ -179,10 +179,14 @@ export default function AdminDashboard() {
 
   const handleSignOut = async () => {
     try {
+      console.log('Admin - Signing out...')
       await signOut()
-      router.push('/login')
+      console.log('Admin - Sign out successful, redirecting to login')
+      
+      // Force a hard redirect to ensure clean state
+      window.location.href = '/login'
     } catch (error) {
-      console.error('Error signing out:', error)
+      console.error('Admin - Sign out error:', error)
     }
   }
 
