@@ -3,13 +3,8 @@
 
 import React, { useState, useEffect } from 'react'
 import { useForm } from 'react-hook-form'
-import { useFlats, Flat } from '@/hooks/useFlats'
+import { useFlats, Flat, FlatFormData } from '@/hooks/useFlats'
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner'
-
-interface FlatFormData {
-  unit_number: string
-  floor: number
-}
 
 interface FlatManagementProps {
   addressId: string
@@ -19,7 +14,10 @@ interface FlatManagementProps {
 
 export const FlatManagement = ({ addressId, addressFullName, managerId }: FlatManagementProps) => {
   const [showFlatForm, setShowFlatForm] = useState(false)
-  const { flats, loading, fetchFlatsForAddress, createFlat } = useFlats()
+  const [submitError, setSubmitError] = useState<string | null>(null)
+  const [submitSuccess, setSubmitSuccess] = useState<string | null>(null)
+  
+  const { flats, loading, error, fetchFlatsForAddress, createFlat, deleteFlat } = useFlats()
   
   const {
     register,
@@ -35,20 +33,53 @@ export const FlatManagement = ({ addressId, addressFullName, managerId }: FlatMa
     }
   }, [addressId, fetchFlatsForAddress])
 
+  // Clear messages after 5 seconds
+  useEffect(() => {
+    if (submitSuccess) {
+      const timer = setTimeout(() => setSubmitSuccess(null), 5000)
+      return () => clearTimeout(timer)
+    }
+  }, [submitSuccess])
+
+  useEffect(() => {
+    if (submitError) {
+      const timer = setTimeout(() => setSubmitError(null), 5000)
+      return () => clearTimeout(timer)
+    }
+  }, [submitError])
+
   const handleCreateFlat = async (data: FlatFormData) => {
+    setSubmitError(null)
+    setSubmitSuccess(null)
+    
     try {
-      await createFlat(addressId, data, managerId, addressFullName)
-      alert('Flat created successfully!')
+      const result = await createFlat(addressId, data, managerId, addressFullName)
+      setSubmitSuccess(result.message)
       reset()
       setShowFlatForm(false)
     } catch (error) {
-      console.error('Error creating flat:', error)
-      alert('Error creating flat')
+      const errorMessage = error instanceof Error ? error.message : 'Error creating flat'
+      setSubmitError(errorMessage)
+    }
+  }
+
+  const handleDeleteFlat = async (flatId: string) => {
+    if (!confirm('Are you sure you want to delete this flat? This action cannot be undone.')) {
+      return
+    }
+
+    try {
+      const result = await deleteFlat(flatId, addressId)
+      setSubmitSuccess(result.message)
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Error deleting flat'
+      setSubmitError(errorMessage)
     }
   }
 
   const handleCancelForm = () => {
     setShowFlatForm(false)
+    setSubmitError(null)
     reset()
   }
 
@@ -67,60 +98,59 @@ export const FlatManagement = ({ addressId, addressFullName, managerId }: FlatMa
         </button>
       </div>
 
+      {/* Success Message */}
+      {submitSuccess && (
+        <div className="mb-4 p-3 bg-green-50 border border-green-200 rounded-md">
+          <div className="flex items-center">
+            <svg className="w-5 h-5 text-green-600 mr-2" fill="currentColor" viewBox="0 0 20 20">
+              <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+            </svg>
+            <p className="text-green-800 text-sm">{submitSuccess}</p>
+          </div>
+        </div>
+      )}
+
+      {/* Error Message */}
+      {(submitError || error) && (
+        <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-md">
+          <div className="flex items-center">
+            <svg className="w-5 h-5 text-red-600 mr-2" fill="currentColor" viewBox="0 0 20 20">
+              <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+            </svg>
+            <p className="text-red-800 text-sm">{submitError || error}</p>
+          </div>
+        </div>
+      )}
+
       {/* Add Flat Form */}
       {showFlatForm && (
         <div className="mb-6 p-4 bg-blue-50 rounded-md border border-blue-200">
           <h5 className="text-md font-medium text-gray-900 mb-3">Add New Flat</h5>
           <form onSubmit={handleSubmit(handleCreateFlat)} className="space-y-4">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700">
-                  Unit Number <span className="text-red-500">*</span>
-                </label>
-                <input
-                  {...register('unit_number', { 
-                    required: 'Unit number is required',
-                    minLength: {
-                      value: 1,
-                      message: 'Unit number must be at least 1 character'
-                    }
-                  })}
-                  type="text"
-                  className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
-                  placeholder="e.g., 101, 2A, etc."
-                  disabled={isSubmitting}
-                />
-                {errors.unit_number && (
-                  <p className="mt-1 text-sm text-red-600">{errors.unit_number.message}</p>
-                )}
-              </div>
-              
-              <div>
-                <label className="block text-sm font-medium text-gray-700">
-                  Floor <span className="text-red-500">*</span>
-                </label>
-                <input
-                  {...register('floor', { 
-                    required: 'Floor is required', 
-                    valueAsNumber: true,
-                    min: {
-                      value: -5,
-                      message: 'Floor must be at least -5 (basement levels)'
-                    },
-                    max: {
-                      value: 100,
-                      message: 'Floor cannot exceed 100'
-                    }
-                  })}
-                  type="number"
-                  className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
-                  placeholder="e.g., 1, 2, 3..."
-                  disabled={isSubmitting}
-                />
-                {errors.floor && (
-                  <p className="mt-1 text-sm text-red-600">{errors.floor.message}</p>
-                )}
-              </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700">
+                Unit Number <span className="text-red-500">*</span>
+              </label>
+              <input
+                {...register('unit_number', { 
+                  required: 'Unit number is required',
+                  minLength: {
+                    value: 1,
+                    message: 'Unit number must be at least 1 character'
+                  },
+                  pattern: {
+                    value: /^[A-Za-z0-9]+$/,
+                    message: 'Unit number can only contain letters and numbers'
+                  }
+                })}
+                type="text"
+                className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                placeholder="e.g., 101, 2A, etc."
+                disabled={isSubmitting}
+              />
+              {errors.unit_number && (
+                <p className="mt-1 text-sm text-red-600">{errors.unit_number.message}</p>
+              )}
             </div>
             
             <div className="flex space-x-3">
@@ -129,7 +159,14 @@ export const FlatManagement = ({ addressId, addressFullName, managerId }: FlatMa
                 disabled={isSubmitting}
                 className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-md text-sm font-medium disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors"
               >
-                {isSubmitting ? 'Creating...' : 'Add Flat'}
+                {isSubmitting ? (
+                  <div className="flex items-center">
+                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                    Creating...
+                  </div>
+                ) : (
+                  'Add Flat'
+                )}
               </button>
               <button
                 type="button"
@@ -162,8 +199,16 @@ export const FlatManagement = ({ addressId, addressFullName, managerId }: FlatMa
         </div>
       ) : (
         <div className="space-y-3">
+          <div className="mb-3 text-sm text-gray-600">
+            Total flats: {flats.length} | Occupied: {flats.filter(f => f.tenant_id).length} | Vacant: {flats.filter(f => !f.tenant_id).length}
+          </div>
+          
           {flats.map((flat) => (
-            <FlatCard key={flat.id} flat={flat} />
+            <FlatCard 
+              key={flat.id} 
+              flat={flat} 
+              onDelete={() => handleDeleteFlat(flat.id)}
+            />
           ))}
           
           <div className="mt-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
@@ -185,17 +230,16 @@ export const FlatManagement = ({ addressId, addressFullName, managerId }: FlatMa
   )
 }
 
-// Separate component for individual flat cards
-const FlatCard = ({ flat }: { flat: Flat }) => {
+// Enhanced flat card component with delete functionality
+const FlatCard = ({ flat, onDelete }: { flat: Flat; onDelete: () => void }) => {
+  const [showMenu, setShowMenu] = useState(false)
+
   return (
     <div className="p-4 border border-gray-200 rounded-lg hover:shadow-md transition-shadow">
       <div className="flex justify-between items-start">
         <div className="flex-1">
           <div className="flex items-center space-x-3 mb-2">
             <h5 className="font-medium text-gray-900">Unit {flat.unit_number}</h5>
-            <span className="text-sm text-gray-600 bg-gray-100 px-2 py-1 rounded">
-              Floor {flat.floor}
-            </span>
           </div>
           
           {flat.tenant_id ? (
@@ -227,14 +271,43 @@ const FlatCard = ({ flat }: { flat: Flat }) => {
           )}
         </div>
         
-        <div className="ml-4">
-          <button className="text-gray-400 hover:text-gray-600 transition-colors">
+        <div className="ml-4 relative">
+          <button 
+            onClick={() => setShowMenu(!showMenu)}
+            className="text-gray-400 hover:text-gray-600 transition-colors"
+          >
             <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 5v.01M12 12v.01M12 19v.01M12 6a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2z" />
             </svg>
           </button>
+          
+          {showMenu && (
+            <div className="absolute right-0 mt-2 w-48 bg-white rounded-md shadow-lg border border-gray-200 z-10">
+              <div className="py-1">
+                <button
+                  onClick={() => {
+                    onDelete()
+                    setShowMenu(false)
+                  }}
+                  className="block px-4 py-2 text-sm text-red-700 hover:bg-red-50 w-full text-left"
+                  disabled={!!flat.tenant_id}
+                  title={flat.tenant_id ? "Cannot delete occupied flat" : "Delete this flat"}
+                >
+                  {flat.tenant_id ? "Cannot delete (occupied)" : "Delete flat"}
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       </div>
+      
+      {/* Click outside to close menu */}
+      {showMenu && (
+        <div 
+          className="fixed inset-0 z-5" 
+          onClick={() => setShowMenu(false)}
+        />
+      )}
     </div>
   )
 }
