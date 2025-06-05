@@ -24,7 +24,7 @@ export const UserFlatCard = ({ flat, onUnregister }: UserFlatCardProps) => {
       <div className="p-6">
         <div className="flex justify-between items-start">
           <div className="flex-1">
-            {/* Unit Info */}
+            {/* Flat Info */}
             <div className="flex items-center space-x-3 mb-3">
               <div className="bg-blue-100 rounded-lg p-3">
                 <svg className="w-6 h-6 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -34,7 +34,7 @@ export const UserFlatCard = ({ flat, onUnregister }: UserFlatCardProps) => {
               </div>
               <div>
                 <h3 className="text-lg font-semibold text-gray-900">
-                  Unit {flat.unit_number}
+                  Flat {flat.unit_number}
                 </h3>
                 <span className="inline-flex px-2 py-1 text-xs font-semibold rounded-full bg-green-100 text-green-800">
                   Your Flat

@@ -154,7 +154,7 @@ const PendingRequestCard = ({
         <div className="flex-1">
           <div className="flex items-center space-x-3 mb-2">
             <h5 className="font-semibold text-gray-900">
-              Unit {request.unit_number} Registration Request
+              Flat {request.unit_number} Registration Request
             </h5>
             <span className="inline-flex px-2 py-1 text-xs font-semibold rounded-full bg-yellow-100 text-yellow-800">
               Pending Review
@@ -219,7 +219,7 @@ const ReviewedRequestCard = ({ request }: { request: FlatRequest }) => {
       <div className="flex justify-between items-start">
         <div className="flex-1">
           <div className="flex items-center space-x-3 mb-1">
-            <h6 className="font-medium text-gray-900">Unit {request.unit_number}</h6>
+            <h6 className="font-medium text-gray-900">Flat {request.unit_number}</h6>
             <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${statusColors[request.status]}`}>
               {request.status.charAt(0).toUpperCase() + request.status.slice(1)}
             </span>

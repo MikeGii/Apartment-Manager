@@ -43,7 +43,7 @@ export const UserRequestStatus = ({ userId }: UserRequestStatusProps) => {
                     <div className="flex-1">
                       <div className="flex items-center space-x-3 mb-2">
                         <h5 className="font-medium text-gray-900">
-                          Unit {request.unit_number}
+                          Flat {request.unit_number}
                         </h5>
                         <span className="inline-flex px-2 py-1 text-xs font-semibold rounded-full bg-yellow-100 text-yellow-800">
                           <div className="flex items-center space-x-1">
@@ -85,7 +85,7 @@ export const UserRequestStatus = ({ userId }: UserRequestStatusProps) => {
                     <div className="flex-1">
                       <div className="flex items-center space-x-3 mb-2">
                         <h5 className="font-medium text-gray-900">
-                          Unit {request.unit_number}
+                          Flat {request.unit_number}
                         </h5>
                         <span className="inline-flex px-2 py-1 text-xs font-semibold rounded-full bg-green-100 text-green-800">
                           <div className="flex items-center space-x-1">
@@ -108,7 +108,7 @@ export const UserRequestStatus = ({ userId }: UserRequestStatusProps) => {
                   </div>
                   <div className="mt-3 p-3 bg-green-100 border border-green-200 rounded">
                     <p className="text-sm text-green-800">
-                      <span className="font-medium">🎉 Congratulations!</span> Your flat registration has been approved. You are now the registered tenant of this unit.
+                      <span className="font-medium">🎉 Congratulations!</span> Your flat registration has been approved. You are now the registered tenant of this flat.
                     </p>
                   </div>
                 </div>
@@ -130,7 +130,7 @@ export const UserRequestStatus = ({ userId }: UserRequestStatusProps) => {
                     <div className="flex-1">
                       <div className="flex items-center space-x-3 mb-2">
                         <h5 className="font-medium text-gray-900">
-                          Unit {request.unit_number}
+                          Flat {request.unit_number}
                         </h5>
                         <span className="inline-flex px-2 py-1 text-xs font-semibold rounded-full bg-red-100 text-red-800">
                           <div className="flex items-center space-x-1">

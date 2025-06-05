@@ -66,21 +66,21 @@ export const FlatRegistrationForm = ({ onSubmit, onCancel, isSubmitting = false 
             disabled={isSubmitting}
           />
 
-          {/* Unit Number */}
+          {/* Flat Number */}
           <div>
             <label className="block text-sm font-medium text-gray-700">
-              Your Flat/Unit Number <span className="text-red-500">*</span>
+              Your Flat Number <span className="text-red-500">*</span>
             </label>
             <input
               {...register('unit_number', { 
-                required: 'Unit number is required',
+                required: 'Flat number is required',
                 minLength: {
                   value: 1,
-                  message: 'Unit number must be at least 1 character'
+                  message: 'Flat number must be at least 1 character'
                 },
                 pattern: {
                   value: /^[A-Za-z0-9]+$/,
-                  message: 'Unit number can only contain letters and numbers'
+                  message: 'Flat number can only contain letters and numbers'
                 }
               })}
               type="text"

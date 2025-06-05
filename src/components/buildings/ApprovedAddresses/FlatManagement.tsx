@@ -129,18 +129,18 @@ export const FlatManagement = ({ addressId, addressFullName, managerId }: FlatMa
           <form onSubmit={handleSubmit(handleCreateFlat)} className="space-y-4">
             <div>
               <label className="block text-sm font-medium text-gray-700">
-                Unit Number <span className="text-red-500">*</span>
+                Flat Number <span className="text-red-500">*</span>
               </label>
               <input
                 {...register('unit_number', { 
-                  required: 'Unit number is required',
+                  required: 'Flat number is required',
                   minLength: {
                     value: 1,
-                    message: 'Unit number must be at least 1 character'
+                    message: 'Flat number must be at least 1 character'
                   },
                   pattern: {
                     value: /^[A-Za-z0-9]+$/,
-                    message: 'Unit number can only contain letters and numbers'
+                    message: 'Flat number can only contain letters and numbers'
                   }
                 })}
                 type="text"
@@ -239,7 +239,7 @@ const FlatCard = ({ flat, onDelete }: { flat: Flat; onDelete: () => void }) => {
       <div className="flex justify-between items-start">
         <div className="flex-1">
           <div className="flex items-center space-x-3 mb-2">
-            <h5 className="font-medium text-gray-900">Unit {flat.unit_number}</h5>
+            <h5 className="font-medium text-gray-900">Flat {flat.unit_number}</h5>
           </div>
           
           {flat.tenant_id ? (
