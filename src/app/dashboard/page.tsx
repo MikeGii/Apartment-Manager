@@ -54,6 +54,14 @@ export default function Dashboard() {
                     Admin Panel
                   </a>
                 )}
+                {(profile?.role === 'building_manager' || profile?.role === 'admin') && (
+                  <a
+                    href="/buildings"
+                    className="text-sm bg-green-600 hover:bg-green-700 text-white px-3 py-1 rounded-md transition-colors"
+                  >
+                    Buildings
+                  </a>
+                )}
                 <button
                   onClick={handleSignOut}
                   className="text-sm text-red-600 hover:text-red-800"
