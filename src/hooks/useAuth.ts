@@ -1,4 +1,4 @@
-// src/hooks/useAuth.ts
+// Fixed useAuth.ts - Properly handles role selection during registration
 "use client"
 
 import { useState, useEffect, useRef } from 'react'
@@ -87,12 +87,17 @@ export function useAuth() {
     try {
       console.log('Creating missing profile for user:', user.id)
       
+      // Get the role from user metadata (set during registration)
+      const userRole = user.user_metadata?.role || 'user'
+      
       const profileData = {
         id: user.id,
         email: user.email || '',
         full_name: user.user_metadata?.full_name || '',
-        role: 'user' // Default role for new users
+        role: userRole // Use the role from registration metadata
       }
+
+      console.log('Creating profile with data:', profileData)
 
       const { data, error } = await supabase
         .from('profiles')

@@ -1,8 +1,10 @@
+// Fixed AuthForm.tsx - Addresses all 4 issues
 "use client"
 
 import { useState, useEffect } from 'react'
 import { useForm } from 'react-hook-form'
 import { supabase } from '@/lib/supabase'
+import { useRouter } from 'next/navigation'
 
 type FormData = {
   email: string
@@ -46,6 +48,7 @@ export default function AuthForm({ onSuccess }: AuthFormProps) {
   const [isLogin, setIsLogin] = useState(true)
   const [loading, setLoading] = useState(false)
   const [message, setMessage] = useState('')
+  const router = useRouter()
   
   // Address hierarchy state
   const [counties, setCounties] = useState<County[]>([])
@@ -53,7 +56,11 @@ export default function AuthForm({ onSuccess }: AuthFormProps) {
   const [settlements, setSettlements] = useState<Settlement[]>([])
   const [addresses, setAddresses] = useState<Address[]>([])
   
-  const { register, handleSubmit, formState: { errors }, reset, watch } = useForm<FormData>()
+  const { register, handleSubmit, formState: { errors }, reset, watch } = useForm<FormData>({
+    defaultValues: {
+      role: 'user' // Set default role to 'user' (Flat Owner)
+    }
+  })
   
   const watchedRole = watch('role')
   const watchedCounty = watch('county_id')
@@ -193,17 +200,25 @@ export default function AuthForm({ onSuccess }: AuthFormProps) {
         if (error) throw error
 
         setMessage('Login successful!')
+        
+        // Redirect to dashboard after successful login
+        setTimeout(() => {
+          router.push('/dashboard')
+        }, 1000)
+
         if (onSuccess) onSuccess()
 
-              } else {
-        // Register
+      } else {
+        // Register - Use the selected role from the form
+        const selectedRole = data.role || 'user'
+        
         const { data: authData, error: signUpError } = await supabase.auth.signUp({
           email: data.email,
           password: data.password,
           options: {
             data: {
               full_name: data.fullName || '',
-              role: data.role || 'user',
+              role: selectedRole, // Use the role selected in the form
               address_id: data.address_id || null,
               flat_number: data.flat_number || null
             }
@@ -213,12 +228,24 @@ export default function AuthForm({ onSuccess }: AuthFormProps) {
         if (signUpError) throw signUpError
 
         setMessage('Registration successful! Please check your email to confirm your account.')
-        reset()
+        reset({
+          role: 'user' // Reset with default role
+        })
       }
     } catch (error: any) {
       setMessage(error.message || 'An error occurred')
     } finally {
       setLoading(false)
+    }
+  }
+
+  // Function to get display name for roles
+  const getRoleDisplayName = (role: string) => {
+    switch(role) {
+      case 'user': return 'Flat Owner'
+      case 'accountant': return 'Accountant'
+      case 'building_manager': return 'Building Manager'
+      default: return role
     }
   }
 
@@ -238,7 +265,7 @@ export default function AuthForm({ onSuccess }: AuthFormProps) {
           <div className="space-y-4">
             {/* Email Field */}
             <div>
-              <label htmlFor="email" className="block text-sm font-medium text-gray-700">
+              <label htmlFor="email" className="block text-sm font-semibold text-gray-800">
                 Email address
               </label>
               <input
@@ -250,17 +277,17 @@ export default function AuthForm({ onSuccess }: AuthFormProps) {
                   }
                 })}
                 type="email"
-                className="mt-1 appearance-none relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500 focus:z-10 sm:text-sm"
+                className="mt-1 appearance-none relative block w-full px-3 py-3 border-2 border-gray-300 placeholder-gray-600 text-gray-900 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 focus:z-10 sm:text-sm font-medium bg-white"
                 placeholder="Email address"
               />
               {errors.email && (
-                <p className="mt-1 text-sm text-red-600">{errors.email.message}</p>
+                <p className="mt-1 text-sm text-red-600 font-medium">{errors.email.message}</p>
               )}
             </div>
 
             {/* Password Field */}
             <div>
-              <label htmlFor="password" className="block text-sm font-medium text-gray-700">
+              <label htmlFor="password" className="block text-sm font-semibold text-gray-800">
                 Password
               </label>
               <input
@@ -272,11 +299,11 @@ export default function AuthForm({ onSuccess }: AuthFormProps) {
                   }
                 })}
                 type="password"
-                className="mt-1 appearance-none relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500 focus:z-10 sm:text-sm"
+                className="mt-1 appearance-none relative block w-full px-3 py-3 border-2 border-gray-300 placeholder-gray-600 text-gray-900 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 focus:z-10 sm:text-sm font-medium bg-white"
                 placeholder="Password"
               />
               {errors.password && (
-                <p className="mt-1 text-sm text-red-600">{errors.password.message}</p>
+                <p className="mt-1 text-sm text-red-600 font-medium">{errors.password.message}</p>
               )}
             </div>
 
@@ -285,50 +312,49 @@ export default function AuthForm({ onSuccess }: AuthFormProps) {
               <>
                 {/* Full Name Field */}
                 <div>
-                  <label htmlFor="fullName" className="block text-sm font-medium text-gray-700">
+                  <label htmlFor="fullName" className="block text-sm font-semibold text-gray-800">
                     Full Name
                   </label>
                   <input
                     {...register('fullName')}
                     type="text"
-                    className="mt-1 appearance-none relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500 focus:z-10 sm:text-sm"
+                    className="mt-1 appearance-none relative block w-full px-3 py-3 border-2 border-gray-300 placeholder-gray-600 text-gray-900 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 focus:z-10 sm:text-sm font-medium bg-white"
                     placeholder="Your full name"
                   />
                 </div>
 
                 {/* Role Selection */}
                 <div>
-                  <label htmlFor="role" className="block text-sm font-medium text-gray-700">
+                  <label htmlFor="role" className="block text-sm font-semibold text-gray-800">
                     Role
                   </label>
                   <select
                     {...register('role', { required: 'Please select a role' })}
-                    className="mt-1 block w-full px-3 py-2 border border-gray-300 bg-white rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
+                    className="mt-1 block w-full px-3 py-3 border-2 border-gray-300 bg-white rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 sm:text-sm font-medium text-gray-900"
                   >
-                    <option value="">Select your role</option>
                     <option value="user">Flat Owner</option>
                     <option value="accountant">Accountant</option>
                     <option value="building_manager">Building Manager</option>
                   </select>
                   {errors.role && (
-                    <p className="mt-1 text-sm text-red-600">{errors.role.message}</p>
+                    <p className="mt-1 text-sm text-red-600 font-medium">{errors.role.message}</p>
                   )}
                 </div>
 
                 {/* Address Selection for Flat Owners */}
                 {watchedRole === 'user' && (
                   <>
-                    <div className="space-y-4 p-4 bg-blue-50 rounded-md">
-                      <h4 className="text-sm font-medium text-blue-900">Address Information</h4>
+                    <div className="space-y-4 p-4 bg-blue-50 rounded-md border-2 border-blue-200">
+                      <h4 className="text-sm font-semibold text-blue-900">Address Information</h4>
                       
                       {/* County Selection */}
                       <div>
-                        <label htmlFor="county_id" className="block text-sm font-medium text-gray-700">
+                        <label htmlFor="county_id" className="block text-sm font-semibold text-gray-800">
                           Maakond (County)
                         </label>
                         <select
                           {...register('county_id', { required: 'Please select a county' })}
-                          className="mt-1 block w-full px-3 py-2 border border-gray-300 bg-white rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
+                          className="mt-1 block w-full px-3 py-3 border-2 border-gray-300 bg-white rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 sm:text-sm font-medium text-gray-900"
                         >
                           <option value="">Select county</option>
                           {counties.map((county) => (
@@ -338,19 +364,19 @@ export default function AuthForm({ onSuccess }: AuthFormProps) {
                           ))}
                         </select>
                         {errors.county_id && (
-                          <p className="mt-1 text-sm text-red-600">{errors.county_id.message}</p>
+                          <p className="mt-1 text-sm text-red-600 font-medium">{errors.county_id.message}</p>
                         )}
                       </div>
 
                       {/* Municipality Selection */}
                       {watchedCounty && (
                         <div>
-                          <label htmlFor="municipality_id" className="block text-sm font-medium text-gray-700">
+                          <label htmlFor="municipality_id" className="block text-sm font-semibold text-gray-800">
                             Vald/Linn (Municipality)
                           </label>
                           <select
                             {...register('municipality_id', { required: 'Please select a municipality' })}
-                            className="mt-1 block w-full px-3 py-2 border border-gray-300 bg-white rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
+                            className="mt-1 block w-full px-3 py-3 border-2 border-gray-300 bg-white rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 sm:text-sm font-medium text-gray-900"
                           >
                             <option value="">Select municipality</option>
                             {municipalities.map((municipality) => (
@@ -360,7 +386,7 @@ export default function AuthForm({ onSuccess }: AuthFormProps) {
                             ))}
                           </select>
                           {errors.municipality_id && (
-                            <p className="mt-1 text-sm text-red-600">{errors.municipality_id.message}</p>
+                            <p className="mt-1 text-sm text-red-600 font-medium">{errors.municipality_id.message}</p>
                           )}
                         </div>
                       )}
@@ -368,12 +394,12 @@ export default function AuthForm({ onSuccess }: AuthFormProps) {
                       {/* Settlement Selection */}
                       {watchedMunicipality && (
                         <div>
-                          <label htmlFor="settlement_id" className="block text-sm font-medium text-gray-700">
+                          <label htmlFor="settlement_id" className="block text-sm font-semibold text-gray-800">
                             Asula (Settlement)
                           </label>
                           <select
                             {...register('settlement_id', { required: 'Please select a settlement' })}
-                            className="mt-1 block w-full px-3 py-2 border border-gray-300 bg-white rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
+                            className="mt-1 block w-full px-3 py-3 border-2 border-gray-300 bg-white rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 sm:text-sm font-medium text-gray-900"
                           >
                             <option value="">Select settlement</option>
                             {settlements.map((settlement) => (
@@ -383,7 +409,7 @@ export default function AuthForm({ onSuccess }: AuthFormProps) {
                             ))}
                           </select>
                           {errors.settlement_id && (
-                            <p className="mt-1 text-sm text-red-600">{errors.settlement_id.message}</p>
+                            <p className="mt-1 text-sm text-red-600 font-medium">{errors.settlement_id.message}</p>
                           )}
                         </div>
                       )}
@@ -391,12 +417,12 @@ export default function AuthForm({ onSuccess }: AuthFormProps) {
                       {/* Address Selection */}
                       {watchedSettlement && (
                         <div>
-                          <label htmlFor="address_id" className="block text-sm font-medium text-gray-700">
+                          <label htmlFor="address_id" className="block text-sm font-semibold text-gray-800">
                             Tänav ja maja number (Street and Building Number)
                           </label>
                           <select
                             {...register('address_id', { required: 'Please select an address' })}
-                            className="mt-1 block w-full px-3 py-2 border border-gray-300 bg-white rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
+                            className="mt-1 block w-full px-3 py-3 border-2 border-gray-300 bg-white rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 sm:text-sm font-medium text-gray-900"
                           >
                             <option value="">Select address</option>
                             {addresses.map((address) => (
@@ -406,12 +432,12 @@ export default function AuthForm({ onSuccess }: AuthFormProps) {
                             ))}
                           </select>
                           {addresses.length === 0 && (
-                            <p className="mt-1 text-sm text-amber-600">
+                            <p className="mt-1 text-sm text-amber-600 font-medium">
                               No approved addresses found for this settlement. Contact a building manager to add your address.
                             </p>
                           )}
                           {errors.address_id && (
-                            <p className="mt-1 text-sm text-red-600">{errors.address_id.message}</p>
+                            <p className="mt-1 text-sm text-red-600 font-medium">{errors.address_id.message}</p>
                           )}
                         </div>
                       )}
@@ -419,17 +445,17 @@ export default function AuthForm({ onSuccess }: AuthFormProps) {
                       {/* Flat Number */}
                       {watchedSettlement && (
                         <div>
-                          <label htmlFor="flat_number" className="block text-sm font-medium text-gray-700">
+                          <label htmlFor="flat_number" className="block text-sm font-semibold text-gray-800">
                             Korter (Flat Number)
                           </label>
                           <input
                             {...register('flat_number', { required: 'Please enter your flat number' })}
                             type="text"
-                            className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
+                            className="mt-1 block w-full px-3 py-3 border-2 border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 sm:text-sm font-medium bg-white text-gray-900"
                             placeholder="e.g., 12, 3A, 101"
                           />
                           {errors.flat_number && (
-                            <p className="mt-1 text-sm text-red-600">{errors.flat_number.message}</p>
+                            <p className="mt-1 text-sm text-red-600 font-medium">{errors.flat_number.message}</p>
                           )}
                         </div>
                       )}
@@ -442,12 +468,12 @@ export default function AuthForm({ onSuccess }: AuthFormProps) {
 
           {/* Message Display */}
           {message && (
-            <div className={`rounded-md p-4 ${
+            <div className={`rounded-md p-4 border-2 ${
               message.includes('successful') 
-                ? 'bg-green-50 text-green-800' 
-                : 'bg-red-50 text-red-800'
+                ? 'bg-green-50 text-green-800 border-green-200' 
+                : 'bg-red-50 text-red-800 border-red-200'
             }`}>
-              <p className="text-sm">{message}</p>
+              <p className="text-sm font-medium">{message}</p>
             </div>
           )}
 
@@ -456,7 +482,7 @@ export default function AuthForm({ onSuccess }: AuthFormProps) {
             <button
               type="submit"
               disabled={loading}
-              className="group relative w-full flex justify-center py-2 px-4 border border-transparent text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
+              className="group relative w-full flex justify-center py-3 px-4 border border-transparent text-sm font-semibold rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
             >
               {loading ? 'Please wait...' : (isLogin ? 'Sign In' : 'Create Account')}
             </button>
@@ -469,9 +495,11 @@ export default function AuthForm({ onSuccess }: AuthFormProps) {
               onClick={() => {
                 setIsLogin(!isLogin)
                 setMessage('')
-                reset()
+                reset({
+                  role: 'user' // Reset with default role
+                })
               }}
-              className="text-blue-600 hover:text-blue-500 text-sm"
+              className="text-blue-600 hover:text-blue-500 text-sm font-medium"
             >
               {isLogin ? "Don't have an account? Sign up" : "Already have an account? Sign in"}
             </button>
