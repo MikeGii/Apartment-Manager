@@ -136,14 +136,43 @@ export default function AuthForm({ onSuccess }: AuthFormProps) {
   const loadAddresses = async (settlementId: string) => {
     try {
       const { data, error } = await supabase
-        .from('full_addresses')
-        .select('*')
+        .from('addresses')
+        .select(`
+          id,
+          street_and_number,
+          settlements (
+            name,
+            settlement_type,
+            municipalities (
+              name,
+              counties (
+                name
+              )
+            )
+          )
+        `)
         .eq('settlement_id', settlementId)
         .eq('status', 'approved')
         .order('street_and_number')
       
       if (error) throw error
-      setAddresses(data || [])
+      
+      // Transform the data to include full address
+      const transformedData = (data || []).map((address: any) => {
+        const settlement = address.settlements
+        const municipality = settlement?.municipalities
+        const county = municipality?.counties
+        
+        return {
+          id: address.id,
+          street_and_number: address.street_and_number,
+          full_address: settlement 
+            ? `${address.street_and_number}, ${settlement.name} ${settlement.settlement_type}, ${municipality.name}, ${county.name}`
+            : address.street_and_number
+        }
+      })
+      
+      setAddresses(transformedData)
     } catch (error) {
       console.error('Error loading addresses:', error)
     }
