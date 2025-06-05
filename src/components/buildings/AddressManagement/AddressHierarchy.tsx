@@ -1,23 +1,22 @@
 // src/components/buildings/AddressManagement/AddressHierarchy.tsx
 "use client"
 
-import { UseFormRegister, FieldErrors } from 'react-hook-form'
+import { UseFormRegister, FieldErrors, FieldValues, Path } from 'react-hook-form'
 import { useAddressHierarchy, County, Municipality, Settlement } from '@/hooks/useAddressHierarchy'
-import { AddressFormData } from '@/hooks/useAddresses'
 
-interface AddressHierarchyProps {
-  register: UseFormRegister<AddressFormData>
-  errors: FieldErrors<AddressFormData>
+interface AddressHierarchyProps<T extends FieldValues> {
+  register: UseFormRegister<T>
+  errors: FieldErrors<T>
   watchedCounty?: string
   watchedMunicipality?: string
 }
 
-export const AddressHierarchy = ({ 
+export const AddressHierarchy = <T extends FieldValues>({ 
   register, 
   errors, 
   watchedCounty, 
   watchedMunicipality 
-}: AddressHierarchyProps) => {
+}: AddressHierarchyProps<T>) => {
   const { 
     counties, 
     municipalities, 
@@ -54,7 +53,7 @@ export const AddressHierarchy = ({
           County <span className="text-red-500">*</span>
         </label>
         <select
-          {...register('county_id', { 
+          {...register('county_id' as Path<T>, { 
             required: 'County is required',
             onChange: (e) => handleCountyChange(e.target.value)
           })}
@@ -68,7 +67,7 @@ export const AddressHierarchy = ({
           ))}
         </select>
         {errors.county_id && (
-          <p className="mt-1 text-sm text-red-600">{errors.county_id.message}</p>
+          <p className="mt-1 text-sm text-red-600">{String(errors.county_id?.message)}</p>
         )}
       </div>
 
@@ -78,7 +77,7 @@ export const AddressHierarchy = ({
           Municipality <span className="text-red-500">*</span>
         </label>
         <select
-          {...register('municipality_id', { 
+          {...register('municipality_id' as Path<T>, { 
             required: watchedCounty ? 'Municipality is required' : false,
             onChange: (e) => handleMunicipalityChange(e.target.value)
           })}
@@ -95,7 +94,7 @@ export const AddressHierarchy = ({
           ))}
         </select>
         {errors.municipality_id && (
-          <p className="mt-1 text-sm text-red-600">{errors.municipality_id.message}</p>
+          <p className="mt-1 text-sm text-red-600">{String(errors.municipality_id?.message)}</p>
         )}
       </div>
 
@@ -105,7 +104,7 @@ export const AddressHierarchy = ({
           Settlement <span className="text-red-500">*</span>
         </label>
         <select
-          {...register('settlement_id', { 
+          {...register('settlement_id' as Path<T>, { 
             required: watchedMunicipality ? 'Settlement is required' : false 
           })}
           disabled={!watchedMunicipality}
@@ -121,7 +120,7 @@ export const AddressHierarchy = ({
           ))}
         </select>
         {errors.settlement_id && (
-          <p className="mt-1 text-sm text-red-600">{errors.settlement_id.message}</p>
+          <p className="mt-1 text-sm text-red-600">{String(errors.settlement_id?.message)}</p>
         )}
       </div>
     </div>

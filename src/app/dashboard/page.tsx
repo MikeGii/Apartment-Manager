@@ -49,14 +49,17 @@ export default function Dashboard() {
                 <div className="text-xs px-2 py-1 rounded-full bg-blue-100 text-blue-800">
                   {profile?.role?.replace('_', ' ').toUpperCase()}
                 </div>
-                {profile?.role === 'admin' && (
+                
+                {/* Role-based Navigation */}
+                {profile?.role === 'user' && (
                   <a
-                    href="/admin"
-                    className="text-sm bg-red-600 hover:bg-red-700 text-white px-3 py-1 rounded-md transition-colors"
+                    href="/my-flats"
+                    className="text-sm bg-green-600 hover:bg-green-700 text-white px-3 py-1 rounded-md transition-colors"
                   >
-                    Admin Panel
+                    My Flats
                   </a>
                 )}
+                
                 {(profile?.role === 'building_manager' || profile?.role === 'admin') && (
                   <a
                     href="/buildings"
@@ -65,6 +68,16 @@ export default function Dashboard() {
                     Buildings
                   </a>
                 )}
+                
+                {profile?.role === 'admin' && (
+                  <a
+                    href="/admin"
+                    className="text-sm bg-red-600 hover:bg-red-700 text-white px-3 py-1 rounded-md transition-colors"
+                  >
+                    Admin Panel
+                  </a>
+                )}
+                
                 <button
                   onClick={handleSignOut}
                   className="text-sm text-red-600 hover:text-red-800"
