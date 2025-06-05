@@ -14,12 +14,26 @@ type Profile = {
   created_at: string
 }
 
+type PendingAddress = {
+  id: string
+  street_and_number: string
+  status: string
+  created_at: string
+  full_address: string
+  created_by: string
+  creator_email?: string
+  creator_name?: string
+}
+
 export default function AdminDashboard() {
   const { profile, signOut, loading } = useAuth()
   const router = useRouter()
   const [users, setUsers] = useState<Profile[]>([])
+  const [pendingAddresses, setPendingAddresses] = useState<PendingAddress[]>([])
   const [loadingUsers, setLoadingUsers] = useState(true)
+  const [loadingAddresses, setLoadingAddresses] = useState(true)
   const [processingUser, setProcessingUser] = useState<string | null>(null)
+  const [processingAddress, setProcessingAddress] = useState<string | null>(null)
 
   // Redirect if not admin
   useEffect(() => {
@@ -28,10 +42,11 @@ export default function AdminDashboard() {
     }
   }, [loading, profile, router])
 
-  // Fetch all users
+  // Fetch all users and addresses
   useEffect(() => {
     if (profile?.role === 'admin') {
       fetchUsers()
+      fetchPendingAddresses()
     }
   }, [profile])
 
@@ -48,6 +63,65 @@ export default function AdminDashboard() {
       console.error('Error fetching users:', error)
     } finally {
       setLoadingUsers(false)
+    }
+  }
+
+  const fetchPendingAddresses = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('addresses')
+        .select(`
+          id,
+          street_and_number,
+          status,
+          created_at,
+          created_by,
+          settlements (
+            name,
+            settlement_type,
+            municipalities (
+              name,
+              counties (
+                name
+              )
+            )
+          ),
+          profiles!addresses_created_by_fkey (
+            email,
+            full_name
+          )
+        `)
+        .eq('status', 'pending')
+        .order('created_at', { ascending: false })
+
+      if (error) throw error
+
+      // Transform the data
+      const transformedData = (data || []).map((address: any) => {
+        const settlement = address.settlements
+        const municipality = settlement?.municipalities
+        const county = municipality?.counties
+        const creator = address.profiles
+
+        return {
+          id: address.id,
+          street_and_number: address.street_and_number,
+          status: address.status,
+          created_at: address.created_at,
+          created_by: address.created_by,
+          creator_email: creator?.email,
+          creator_name: creator?.full_name,
+          full_address: settlement 
+            ? `${address.street_and_number}, ${settlement.name} ${settlement.settlement_type}, ${municipality.name}, ${county.name}`
+            : address.street_and_number
+        }
+      })
+
+      setPendingAddresses(transformedData)
+    } catch (error) {
+      console.error('Error fetching pending addresses:', error)
+    } finally {
+      setLoadingAddresses(false)
     }
   }
 
@@ -72,15 +146,6 @@ export default function AdminDashboard() {
       alert('Error updating user status')
     } finally {
       setProcessingUser(null)
-    }
-  }
-
-  const handleSignOut = async () => {
-    try {
-      await signOut()
-      router.push('/login')
-    } catch (error) {
-      console.error('Error signing out:', error)
     }
   }
 
@@ -109,6 +174,41 @@ export default function AdminDashboard() {
       alert('Error promoting user to admin')
     } finally {
       setProcessingUser(null)
+    }
+  }
+
+  const handleSignOut = async () => {
+    try {
+      await signOut()
+      router.push('/login')
+    } catch (error) {
+      console.error('Error signing out:', error)
+    }
+  }
+
+  const updateAddressStatus = async (addressId: string, newStatus: 'approved' | 'rejected') => {
+    setProcessingAddress(addressId)
+    try {
+      const { error } = await supabase
+        .from('addresses')
+        .update({ 
+          status: newStatus, 
+          approved_by: profile?.id,
+          updated_at: new Date().toISOString() 
+        })
+        .eq('id', addressId)
+
+      if (error) throw error
+
+      // Remove from pending list
+      setPendingAddresses(pendingAddresses.filter(addr => addr.id !== addressId))
+
+      alert(`Address ${newStatus} successfully!`)
+    } catch (error) {
+      console.error('Error updating address status:', error)
+      alert('Error updating address status')
+    } finally {
+      setProcessingAddress(null)
     }
   }
 
@@ -246,7 +346,7 @@ export default function AdminDashboard() {
             <div className="bg-white shadow rounded-lg mb-8">
               <div className="px-4 py-5 sm:p-6">
                 <h3 className="text-lg leading-6 font-medium text-gray-900 mb-4">
-                  Pending Approvals ({pendingUsers.length})
+                  Pending User Approvals ({pendingUsers.length})
                 </h3>
                 <div className="overflow-x-auto">
                   <table className="min-w-full divide-y divide-gray-200">
@@ -296,6 +396,77 @@ export default function AdminDashboard() {
                             <button
                               onClick={() => updateUserStatus(user.id, 'rejected')}
                               disabled={processingUser === user.id}
+                              className="text-red-600 hover:text-red-900 disabled:opacity-50"
+                            >
+                              Reject
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Pending Address Approvals */}
+          {pendingAddresses.length > 0 && (
+            <div className="bg-white shadow rounded-lg mb-8">
+              <div className="px-4 py-5 sm:p-6">
+                <h3 className="text-lg leading-6 font-medium text-gray-900 mb-4">
+                  Pending Address Approvals ({pendingAddresses.length})
+                </h3>
+                <div className="overflow-x-auto">
+                  <table className="min-w-full divide-y divide-gray-200">
+                    <thead className="bg-gray-50">
+                      <tr>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                          Address
+                        </th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                          Requested by
+                        </th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                          Submitted
+                        </th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                          Actions
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody className="bg-white divide-y divide-gray-200">
+                      {pendingAddresses.map((address) => (
+                        <tr key={address.id}>
+                          <td className="px-6 py-4 whitespace-nowrap">
+                            <div>
+                              <div className="text-sm font-medium text-gray-900">
+                                {address.full_address}
+                              </div>
+                            </div>
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap">
+                            <div>
+                              <div className="text-sm font-medium text-gray-900">
+                                {address.creator_name || 'No name provided'}
+                              </div>
+                              <div className="text-sm text-gray-500">{address.creator_email}</div>
+                            </div>
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                            {new Date(address.created_at).toLocaleDateString()}
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm font-medium space-x-2">
+                            <button
+                              onClick={() => updateAddressStatus(address.id, 'approved')}
+                              disabled={processingAddress === address.id}
+                              className="text-green-600 hover:text-green-900 disabled:opacity-50"
+                            >
+                              {processingAddress === address.id ? 'Processing...' : 'Approve'}
+                            </button>
+                            <button
+                              onClick={() => updateAddressStatus(address.id, 'rejected')}
+                              disabled={processingAddress === address.id}
                               className="text-red-600 hover:text-red-900 disabled:opacity-50"
                             >
                               Reject
@@ -383,7 +554,7 @@ export default function AdminDashboard() {
                                 disabled={processingUser === user.id}
                                 className="text-purple-600 hover:text-purple-900 disabled:opacity-50"
                               >
-                                Make Admin
+                                {processingUser === user.id ? 'Processing...' : 'Make Admin'}
                               </button>
                             )}
                           </td>
