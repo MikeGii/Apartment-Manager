@@ -93,6 +93,7 @@ export default function BuildingsManagement() {
   useEffect(() => {
     if (!loading && profile) {
       if (profile.role !== 'building_manager' && profile.role !== 'admin') {
+        console.log('Redirecting - not building manager or admin')
         router.push('/dashboard')
       }
     }
@@ -101,6 +102,7 @@ export default function BuildingsManagement() {
   // Fetch buildings and addresses
   useEffect(() => {
     if (profile && (profile.role === 'building_manager' || profile.role === 'admin')) {
+      console.log('Fetching building data for:', profile.role)
       fetchBuildings()
       loadCounties()
       fetchMyAddresses()
@@ -338,19 +340,30 @@ export default function BuildingsManagement() {
     fetchFlats(buildingId)
   }
 
-  if (loading || !profile) {
+  if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <div className="text-center">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
-          <p className="mt-4 text-gray-600">Loading...</p>
+          <p className="mt-4 text-gray-600">Loading authentication...</p>
+        </div>
+      </div>
+    )
+  }
+
+  if (!profile) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
+          <p className="mt-4 text-gray-600">Loading profile...</p>
         </div>
       </div>
     )
   }
 
   if (profile.role !== 'building_manager' && profile.role !== 'admin') {
-    return null
+    return null // Will redirect to dashboard
   }
 
   const selectedBuildingData = buildings.find(b => b.id === selectedBuilding)
