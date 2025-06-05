@@ -193,6 +193,8 @@ export default function AdminDashboard() {
   const updateAddressStatus = async (addressId: string, newStatus: 'approved' | 'rejected') => {
     setProcessingAddress(addressId)
     try {
+      console.log('Updating address status:', { addressId, newStatus })
+      
       const { error } = await supabase
         .from('addresses')
         .update({ 
@@ -202,15 +204,20 @@ export default function AdminDashboard() {
         })
         .eq('id', addressId)
 
-      if (error) throw error
+      if (error) {
+        console.error('Supabase error details:', error)
+        throw error
+      }
+
+      console.log('Address status updated successfully')
 
       // Remove from pending list
       setPendingAddresses(pendingAddresses.filter(addr => addr.id !== addressId))
 
-      alert(`Address ${newStatus} successfully!`)
-    } catch (error) {
+      alert(`Address ${newStatus} successfully!${newStatus === 'approved' ? ' Building will be created automatically.' : ''}`)
+    } catch (error: any) {
       console.error('Error updating address status:', error)
-      alert('Error updating address status')
+      alert(`Error updating address status: ${error.message || 'Unknown error'}`)
     } finally {
       setProcessingAddress(null)
     }
