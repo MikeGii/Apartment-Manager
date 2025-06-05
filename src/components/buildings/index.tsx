@@ -8,6 +8,7 @@ import { PageHeader } from '@/components/ui/PageHeader'
 import { FullScreenLoader } from '@/components/ui/LoadingSpinner'
 import { AddressManagement } from './AddressManagement'
 import { ApprovedAddresses } from './ApprovedAddresses'
+import { FlatRequestsManagement } from './FlatRequestsManagement'
 
 export const BuildingsManagement = () => {
   const { profile, loading, isAuthenticated } = useAuth()
@@ -67,6 +68,9 @@ export const BuildingsManagement = () => {
           
           {/* Address Management Section - Pending Addresses & Add New */}
           <AddressManagement userId={profile.id} />
+
+          {/* Flat Registration Requests Management */}
+          <FlatRequestsManagement userId={profile.id} userRole={profile.role} />
 
           {/* Approved Addresses & Flat Management */}
           <ApprovedAddresses userId={profile.id} />

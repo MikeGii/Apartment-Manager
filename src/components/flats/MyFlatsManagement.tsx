@@ -10,6 +10,7 @@ import { FullScreenLoader } from '@/components/ui/LoadingSpinner'
 import { useUserFlats, FlatRegistrationData } from '@/hooks/useUserFlats'
 import { FlatRegistrationForm } from './FlatRegistrationForm'
 import { UserFlatCard } from './UserFlatCard'
+import { UserRequestStatus } from './UserRequestStatus'
 
 export const MyFlatsManagement = () => {
   const { profile, loading, isAuthenticated } = useAuth()
@@ -153,6 +154,9 @@ export const MyFlatsManagement = () => {
               </div>
             </div>
           )}
+
+          {/* User Request Status */}
+          <UserRequestStatus userId={profile.id} />
 
           {/* Registration Form */}
           {showRegistrationForm && (
