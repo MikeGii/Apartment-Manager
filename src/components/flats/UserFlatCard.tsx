@@ -42,12 +42,8 @@ export const UserFlatCard = ({ flat, onUnregister }: UserFlatCardProps) => {
               </div>
             </div>
 
-            {/* Address Info */}
+            {/* Address Info - Simplified */}
             <div className="space-y-2">
-              <div>
-                <p className="text-sm font-medium text-gray-700">Building</p>
-                <p className="text-sm text-gray-600">{flat.building_name}</p>
-              </div>
               <div>
                 <p className="text-sm font-medium text-gray-700">Address</p>
                 <p className="text-sm text-gray-600">{flat.address_full}</p>

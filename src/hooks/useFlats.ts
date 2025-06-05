@@ -130,7 +130,7 @@ export const useFlats = () => {
         console.log('6. Existing flat check:', { existingFlat })
 
         if (existingFlat) {
-          throw new Error(`Unit number "${flatData.unit_number}" already exists in this building`)
+          throw new Error(`Flat number "${flatData.unit_number}" already exists in this building`)
         }
       }
 
@@ -299,6 +299,30 @@ export const useFlats = () => {
     }
   }
 
+  const removeTenant = async (flatId: string, addressId: string) => {
+    try {
+      console.log('Removing tenant from flat:', flatId)
+      
+      const { error } = await supabase
+        .from('flats')
+        .update({ tenant_id: null })
+        .eq('id', flatId)
+
+      if (error) throw error
+
+      console.log('Tenant removed successfully')
+      
+      // Refresh flats list
+      await fetchFlatsForAddress(addressId)
+      
+      return { success: true, message: 'Tenant removed successfully! Flat is now vacant.' }
+    } catch (error) {
+      console.error('Error removing tenant:', error)
+      const errorMessage = error instanceof Error ? error.message : 'Error removing tenant'
+      throw new Error(errorMessage)
+    }
+  }
+
   const clearFlats = () => {
     setFlats([])
     setError(null)
@@ -311,6 +335,7 @@ export const useFlats = () => {
     fetchFlatsForAddress,
     createFlat,
     deleteFlat,
+    removeTenant,
     clearFlats
   }
 }

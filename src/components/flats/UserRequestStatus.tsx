@@ -15,13 +15,14 @@ export const UserRequestStatus = ({ userId }: UserRequestStatusProps) => {
     return <LoadingSpinner size="sm" message="Loading your requests..." />
   }
 
-  if (requests.length === 0) {
-    return null // Don't show anything if no requests
-  }
-
+  // Only show pending and rejected requests (approved ones are shown as registered flats)
   const pendingRequests = requests.filter(req => req.status === 'pending')
-  const approvedRequests = requests.filter(req => req.status === 'approved')
   const rejectedRequests = requests.filter(req => req.status === 'rejected')
+
+  // Don't show the component if there are no pending or rejected requests
+  if (pendingRequests.length === 0 && rejectedRequests.length === 0) {
+    return null
+  }
 
   return (
     <div className="bg-white shadow rounded-lg mb-6">
@@ -34,7 +35,7 @@ export const UserRequestStatus = ({ userId }: UserRequestStatusProps) => {
         {pendingRequests.length > 0 && (
           <div className="mb-6">
             <h4 className="text-md font-medium text-gray-900 mb-3">
-              Pending Approval ({pendingRequests.length})
+              Awaiting Approval ({pendingRequests.length})
             </h4>
             <div className="space-y-3">
               {pendingRequests.map((request) => (
@@ -55,7 +56,7 @@ export const UserRequestStatus = ({ userId }: UserRequestStatusProps) => {
                         </span>
                       </div>
                       <div className="text-sm text-gray-600">
-                        <p>{request.building_name}</p>
+                        <p className="font-medium text-gray-700">Address:</p>
                         <p>{request.address_full}</p>
                         <p className="mt-1">Submitted: {new Date(request.requested_at).toLocaleDateString()}</p>
                       </div>
@@ -64,51 +65,6 @@ export const UserRequestStatus = ({ userId }: UserRequestStatusProps) => {
                   <div className="mt-3 p-3 bg-blue-50 border border-blue-200 rounded">
                     <p className="text-sm text-blue-800">
                       <span className="font-medium">⏳ Under Review:</span> Your request is being reviewed by the building manager. You'll be notified once a decision is made.
-                    </p>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {/* Approved Requests */}
-        {approvedRequests.length > 0 && (
-          <div className="mb-6">
-            <h4 className="text-md font-medium text-gray-900 mb-3">
-              Approved Registrations ({approvedRequests.length})
-            </h4>
-            <div className="space-y-3">
-              {approvedRequests.map((request) => (
-                <div key={request.id} className="border border-green-200 bg-green-50 rounded-lg p-4">
-                  <div className="flex justify-between items-start">
-                    <div className="flex-1">
-                      <div className="flex items-center space-x-3 mb-2">
-                        <h5 className="font-medium text-gray-900">
-                          Flat {request.unit_number}
-                        </h5>
-                        <span className="inline-flex px-2 py-1 text-xs font-semibold rounded-full bg-green-100 text-green-800">
-                          <div className="flex items-center space-x-1">
-                            <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
-                              <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-                            </svg>
-                            <span>Approved</span>
-                          </div>
-                        </span>
-                      </div>
-                      <div className="text-sm text-gray-600">
-                        <p>{request.building_name}</p>
-                        <p>{request.address_full}</p>
-                        <p className="mt-1">Approved: {request.reviewed_at ? new Date(request.reviewed_at).toLocaleDateString() : 'Recently'}</p>
-                        {request.notes && (
-                          <p className="mt-1 italic">Manager's note: "{request.notes}"</p>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                  <div className="mt-3 p-3 bg-green-100 border border-green-200 rounded">
-                    <p className="text-sm text-green-800">
-                      <span className="font-medium">🎉 Congratulations!</span> Your flat registration has been approved. You are now the registered tenant of this flat.
                     </p>
                   </div>
                 </div>
@@ -142,7 +98,7 @@ export const UserRequestStatus = ({ userId }: UserRequestStatusProps) => {
                         </span>
                       </div>
                       <div className="text-sm text-gray-600">
-                        <p>{request.building_name}</p>
+                        <p className="font-medium text-gray-700">Address:</p>
                         <p>{request.address_full}</p>
                         <p className="mt-1">Rejected: {request.reviewed_at ? new Date(request.reviewed_at).toLocaleDateString() : 'Recently'}</p>
                         {request.notes && (

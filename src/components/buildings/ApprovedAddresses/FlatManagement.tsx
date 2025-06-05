@@ -17,7 +17,7 @@ export const FlatManagement = ({ addressId, addressFullName, managerId }: FlatMa
   const [submitError, setSubmitError] = useState<string | null>(null)
   const [submitSuccess, setSubmitSuccess] = useState<string | null>(null)
   
-  const { flats, loading, error, fetchFlatsForAddress, createFlat, deleteFlat } = useFlats()
+  const { flats, loading, error, fetchFlatsForAddress, createFlat, deleteFlat, removeTenant } = useFlats()
   
   const {
     register,
@@ -73,6 +73,20 @@ export const FlatManagement = ({ addressId, addressFullName, managerId }: FlatMa
       setSubmitSuccess(result.message)
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Error deleting flat'
+      setSubmitError(errorMessage)
+    }
+  }
+
+  const handleRemoveTenant = async (flatId: string) => {
+    if (!confirm('Are you sure you want to remove this tenant? This will mark the flat as vacant.')) {
+      return
+    }
+
+    try {
+      const result = await removeTenant(flatId, addressId)
+      setSubmitSuccess(result.message)
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Error removing tenant'
       setSubmitError(errorMessage)
     }
   }
@@ -208,6 +222,7 @@ export const FlatManagement = ({ addressId, addressFullName, managerId }: FlatMa
               key={flat.id} 
               flat={flat} 
               onDelete={() => handleDeleteFlat(flat.id)}
+              onRemoveTenant={() => handleRemoveTenant(flat.id)}
             />
           ))}
           
@@ -230,8 +245,12 @@ export const FlatManagement = ({ addressId, addressFullName, managerId }: FlatMa
   )
 }
 
-// Enhanced flat card component with delete functionality
-const FlatCard = ({ flat, onDelete }: { flat: Flat; onDelete: () => void }) => {
+// Enhanced flat card component with tenant details visible to managers
+const FlatCard = ({ flat, onDelete, onRemoveTenant }: { 
+  flat: Flat; 
+  onDelete: () => void;
+  onRemoveTenant: () => void;
+}) => {
   const [showMenu, setShowMenu] = useState(false)
 
   return (
@@ -243,7 +262,7 @@ const FlatCard = ({ flat, onDelete }: { flat: Flat; onDelete: () => void }) => {
           </div>
           
           {flat.tenant_id ? (
-            <div className="space-y-1">
+            <div className="space-y-2">
               <div className="flex items-center space-x-2">
                 <span className="inline-flex px-2 py-1 text-xs font-semibold rounded-full bg-green-100 text-green-800">
                   <div className="flex items-center space-x-1">
@@ -254,9 +273,11 @@ const FlatCard = ({ flat, onDelete }: { flat: Flat; onDelete: () => void }) => {
                   </div>
                 </span>
               </div>
-              <div className="text-sm text-gray-600 ml-1">
-                <p className="font-medium">{flat.tenant_name || 'Name not provided'}</p>
-                <p className="text-gray-500">{flat.tenant_email}</p>
+              {/* Tenant Details - Now Visible to Managers */}
+              <div className="text-sm text-gray-600 ml-1 bg-gray-50 p-3 rounded-md">
+                <p className="font-medium text-gray-700 mb-1">Current Tenant:</p>
+                <p className="font-medium text-gray-900">{flat.tenant_name || 'Name not provided'}</p>
+                <p className="text-gray-600">{flat.tenant_email}</p>
               </div>
             </div>
           ) : (
@@ -284,6 +305,17 @@ const FlatCard = ({ flat, onDelete }: { flat: Flat; onDelete: () => void }) => {
           {showMenu && (
             <div className="absolute right-0 mt-2 w-48 bg-white rounded-md shadow-lg border border-gray-200 z-10">
               <div className="py-1">
+                {flat.tenant_id && (
+                  <button
+                    onClick={() => {
+                      onRemoveTenant()
+                      setShowMenu(false)
+                    }}
+                    className="block px-4 py-2 text-sm text-orange-700 hover:bg-orange-50 w-full text-left"
+                  >
+                    Remove tenant
+                  </button>
+                )}
                 <button
                   onClick={() => {
                     onDelete()

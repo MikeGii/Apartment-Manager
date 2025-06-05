@@ -152,7 +152,7 @@ const PendingRequestCard = ({
     <div className="border border-yellow-200 bg-yellow-50 rounded-lg p-4">
       <div className="flex justify-between items-start mb-4">
         <div className="flex-1">
-          <div className="flex items-center space-x-3 mb-2">
+          <div className="flex items-center space-x-3 mb-3">
             <h5 className="font-semibold text-gray-900">
               Flat {request.unit_number} Registration Request
             </h5>
@@ -161,12 +161,19 @@ const PendingRequestCard = ({
             </span>
           </div>
           
+          {/* Applicant Details Section */}
+          <div className="bg-white p-3 rounded-md border border-yellow-300 mb-3">
+            <h6 className="text-sm font-semibold text-gray-900 mb-2">📋 Applicant Information</h6>
+            <div className="space-y-1 text-sm">
+              <p><span className="font-medium text-gray-700">Name:</span> {request.user_name || 'Not provided'}</p>
+              <p><span className="font-medium text-gray-700">Email:</span> {request.user_email}</p>
+            </div>
+          </div>
+
+          {/* Property Details Section */}
           <div className="space-y-1 text-sm text-gray-700">
-            <p><span className="font-medium">Building:</span> {request.building_name}</p>
-            <p><span className="font-medium">Address:</span> {request.address_full}</p>
-            <p><span className="font-medium">Applicant:</span> {request.user_name || 'Name not provided'}</p>
-            <p><span className="font-medium">Email:</span> {request.user_email}</p>
-            <p><span className="font-medium">Requested:</span> {new Date(request.requested_at).toLocaleDateString()}</p>
+            <p><span className="font-medium">📍 Address:</span> {request.address_full}</p>
+            <p><span className="font-medium">📅 Requested:</span> {new Date(request.requested_at).toLocaleDateString()}</p>
           </div>
         </div>
       </div>
@@ -174,7 +181,7 @@ const PendingRequestCard = ({
       {/* Notes */}
       <div className="mb-4">
         <label className="block text-sm font-medium text-gray-700 mb-2">
-          Notes (optional for approval, required for rejection)
+          Manager Notes (optional for approval, required for rejection)
         </label>
         <textarea
           value={notes}
@@ -191,16 +198,40 @@ const PendingRequestCard = ({
         <button
           onClick={onApprove}
           disabled={isProcessing}
-          className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-md text-sm font-medium disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors"
+          className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-md text-sm font-medium disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors flex items-center space-x-1"
         >
-          {isProcessing ? 'Processing...' : 'Approve'}
+          {isProcessing ? (
+            <>
+              <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+              <span>Processing...</span>
+            </>
+          ) : (
+            <>
+              <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+              </svg>
+              <span>Approve</span>
+            </>
+          )}
         </button>
         <button
           onClick={onReject}
           disabled={isProcessing}
-          className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-md text-sm font-medium disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors"
+          className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-md text-sm font-medium disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors flex items-center space-x-1"
         >
-          {isProcessing ? 'Processing...' : 'Reject'}
+          {isProcessing ? (
+            <>
+              <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+              <span>Processing...</span>
+            </>
+          ) : (
+            <>
+              <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
+              </svg>
+              <span>Reject</span>
+            </>
+          )}
         </button>
       </div>
     </div>
@@ -218,16 +249,17 @@ const ReviewedRequestCard = ({ request }: { request: FlatRequest }) => {
     <div className="border border-gray-200 bg-gray-50 rounded-lg p-3">
       <div className="flex justify-between items-start">
         <div className="flex-1">
-          <div className="flex items-center space-x-3 mb-1">
+          <div className="flex items-center space-x-3 mb-2">
             <h6 className="font-medium text-gray-900">Flat {request.unit_number}</h6>
             <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${statusColors[request.status]}`}>
               {request.status.charAt(0).toUpperCase() + request.status.slice(1)}
             </span>
           </div>
           <div className="text-sm text-gray-600">
-            <p>{request.user_name || request.user_email}</p>
+            <p><span className="font-medium">Applicant:</span> {request.user_name || request.user_email}</p>
+            <p><span className="font-medium">Address:</span> {request.address_full}</p>
             <p>Reviewed: {request.reviewed_at ? new Date(request.reviewed_at).toLocaleDateString() : 'N/A'}</p>
-            {request.notes && <p className="italic mt-1">"{request.notes}"</p>}
+            {request.notes && <p className="italic mt-1">Manager note: "{request.notes}"</p>}
           </div>
         </div>
       </div>
