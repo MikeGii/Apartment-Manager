@@ -69,33 +69,10 @@ export const useUserFlats = (userId?: string) => {
     try {
       log.debug('Fetching user flats for:', userId)
 
-      // Get flats where the user is the tenant using optimized query
+      // Use a simpler approach - get flats first, then build the data manually
       const { data: flats, error: flatsError } = await supabase
         .from('flats')
-        .select(`
-          id,
-          unit_number,
-          building_id,
-          buildings (
-            id,
-            name,
-            address,
-            addresses (
-              id,
-              street_and_number,
-              settlements (
-                name,
-                settlement_type,
-                municipalities (
-                  name,
-                  counties (
-                    name
-                  )
-                )
-              )
-            )
-          )
-        `)
+        .select('id, unit_number, building_id')
         .eq('tenant_id', userId)
 
       if (flatsError) {
@@ -113,29 +90,105 @@ export const useUserFlats = (userId?: string) => {
 
       log.debug(`Processing ${flats.length} user flats`)
 
-      // Transform the data with proper typing
-      const enrichedFlats: UserFlat[] = flats.map((flat: any) => {
-        const building = flat.buildings
-        const address = building?.addresses
-        const settlement = address?.settlements
-        const municipality = settlement?.municipalities
-        const county = municipality?.counties
+      // Manually fetch building and address data for each flat
+      const enrichedFlats: UserFlat[] = await Promise.all(
+        flats.map(async (flat): Promise<UserFlat> => {
+          try {
+            // Get building data
+            const { data: building, error: buildingError } = await supabase
+              .from('buildings')
+              .select('id, name, address')
+              .eq('id', flat.building_id)
+              .single()
 
-        // Build full address
-        let fullAddress = address?.street_and_number || 'Unknown Address'
-        if (settlement && municipality && county) {
-          fullAddress = `${address.street_and_number}, ${settlement.name} ${settlement.settlement_type}, ${municipality.name}, ${county.name}`
-        }
+            if (buildingError || !building) {
+              log.warn('Could not fetch building for flat:', flat.id)
+              return {
+                id: flat.id,
+                unit_number: flat.unit_number,
+                building_name: 'Unknown Building',
+                building_id: flat.building_id,
+                address_id: '',
+                address_full: 'Unknown Address'
+              }
+            }
 
-        return {
-          id: flat.id,
-          unit_number: flat.unit_number,
-          building_name: building?.name || 'Unknown Building',
-          building_id: flat.building_id,
-          address_id: building?.address || '',
-          address_full: fullAddress
-        }
-      })
+            // Get address data
+            const { data: address, error: addressError } = await supabase
+              .from('addresses')
+              .select('id, street_and_number, settlement_id')
+              .eq('id', building.address)
+              .single()
+
+            if (addressError || !address) {
+              log.warn('Could not fetch address for building:', building.id)
+              return {
+                id: flat.id,
+                unit_number: flat.unit_number,
+                building_name: building.name,
+                building_id: flat.building_id,
+                address_id: building.address,
+                address_full: 'Unknown Address'
+              }
+            }
+
+            // Build full address
+            let fullAddress = address.street_and_number
+            
+            try {
+              // Get settlement data
+              const { data: settlement, error: settlementError } = await supabase
+                .from('settlements')
+                .select('name, settlement_type, municipality_id')
+                .eq('id', address.settlement_id)
+                .single()
+
+              if (!settlementError && settlement) {
+                // Get municipality data
+                const { data: municipality, error: municipalityError } = await supabase
+                  .from('municipalities')
+                  .select('name, county_id')
+                  .eq('id', settlement.municipality_id)
+                  .single()
+
+                if (!municipalityError && municipality) {
+                  // Get county data
+                  const { data: county, error: countyError } = await supabase
+                    .from('counties')
+                    .select('name')
+                    .eq('id', municipality.county_id)
+                    .single()
+
+                  if (!countyError && county) {
+                    fullAddress = `${address.street_and_number}, ${settlement.name} ${settlement.settlement_type}, ${municipality.name}, ${county.name}`
+                  }
+                }
+              }
+            } catch (locationError) {
+              log.warn('Could not fetch full location data:', locationError)
+            }
+
+            return {
+              id: flat.id,
+              unit_number: flat.unit_number,
+              building_name: building.name,
+              building_id: flat.building_id,
+              address_id: building.address,
+              address_full: fullAddress
+            }
+          } catch (flatError) {
+            log.error('Error processing flat:', flat.id, flatError)
+            return {
+              id: flat.id,
+              unit_number: flat.unit_number,
+              building_name: 'Error Loading',
+              building_id: flat.building_id,
+              address_id: '',
+              address_full: 'Error Loading'
+            }
+          }
+        })
+      )
 
       log.debug(`Successfully processed ${enrichedFlats.length} user flats`)
       setUserFlats(enrichedFlats)
