@@ -5,8 +5,8 @@ import ProtectedRoute from '@/components/ProtectedRoute'
 import { useAuth } from '@/hooks/useAuth'
 import { DashboardLayout } from '@/components/layouts/DashboardLayout'
 import { UserDashboard } from '@/components/dashboard/UserDashboard'
+import { ManagerDashboard } from '@/components/dashboard/ManagerDashboard'
 // Import other role dashboards when ready
-// import { ManagerDashboard } from '@/components/dashboard/ManagerDashboard'
 // import { AdminDashboard } from '@/components/dashboard/AdminDashboard'
 // import { AccountantDashboard } from '@/components/dashboard/AccountantDashboard'
 
@@ -42,8 +42,7 @@ export default function Dashboard() {
         return <UserDashboard userName={getUserName()} />
       
       case 'building_manager':
-        // Temporary fallback - will be replaced with ManagerDashboard component
-        return <LegacyManagerDashboard />
+        return <ManagerDashboard userName={getUserName()} />
       
       case 'admin':
         // Temporary fallback - will be replaced with AdminDashboard component
