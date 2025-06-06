@@ -1,4 +1,4 @@
-// Fixed useAuth.ts - Stable authentication with race condition fixes
+// src/hooks/useAuth.ts - Improved version with proper error handling and logging
 "use client"
 
 import { useState, useEffect, useRef } from 'react'
@@ -15,28 +15,45 @@ type Profile = {
   updated_at: string
 }
 
+type ProfileError = 'PROFILE_NOT_FOUND' | 'PROFILE_FETCH_ERROR' | 'RLS_ERROR' | 'SESSION_ERROR' | 'PROFILE_CREATE_ERROR'
+
 export function useAuth() {
   const [user, setUser] = useState<User | null>(null)
   const [profile, setProfile] = useState<Profile | null>(null)
   const [loading, setLoading] = useState(true)
   const [initialized, setInitialized] = useState(false)
-  const [profileError, setProfileError] = useState<string | null>(null)
+  const [profileError, setProfileError] = useState<ProfileError | null>(null)
   
-  // Use refs to prevent multiple simultaneous calls
-  const initializingRef = useRef(false)
-  const fetchingProfileRef = useRef(false)
+  // Prevent multiple simultaneous operations
+  const operationRefs = {
+    initializing: useRef(false),
+    fetchingProfile: useRef(false)
+  }
+
+  const logger = {
+    debug: (message: string, data?: any) => {
+      if (process.env.NODE_ENV === 'development') {
+        console.log(`[useAuth] ${message}`, data || '')
+      }
+    },
+    error: (message: string, error?: any) => {
+      console.error(`[useAuth] ${message}`, error || '')
+    },
+    warn: (message: string, data?: any) => {
+      console.warn(`[useAuth] ${message}`, data || '')
+    }
+  }
 
   const fetchProfile = async (userId: string) => {
-    // Prevent multiple simultaneous profile fetches
-    if (fetchingProfileRef.current) {
-      console.log('useAuth: Profile fetch already in progress, skipping...')
+    if (operationRefs.fetchingProfile.current) {
+      logger.debug('Profile fetch already in progress, skipping')
       return
     }
 
-    fetchingProfileRef.current = true
+    operationRefs.fetchingProfile.current = true
     
     try {
-      console.log('useAuth: Fetching profile for user:', userId)
+      logger.debug('Fetching profile for user:', userId)
       setProfileError(null)
       
       const { data, error } = await supabase
@@ -46,72 +63,60 @@ export function useAuth() {
         .single()
 
       if (error) {
-        console.error('Profile fetch error:', error)
+        logger.error('Profile fetch error:', error)
         
-        if (error.code === 'PGRST116') {
-          console.warn('User authenticated but no profile found in database')
-          setProfileError('PROFILE_NOT_FOUND')
-          setProfile(null)
-          return
-        } else if (error.code === '42P17') {
-          console.error('RLS infinite recursion detected - database policies need fixing')
-          setProfileError('RLS_ERROR')
-          setProfile(null)
-          return
+        const errorMap: Record<string, ProfileError> = {
+          'PGRST116': 'PROFILE_NOT_FOUND',
+          '42P17': 'RLS_ERROR'
         }
         
-        setProfileError('PROFILE_FETCH_ERROR')
+        const profileError = errorMap[error.code] || 'PROFILE_FETCH_ERROR'
+        setProfileError(profileError)
         setProfile(null)
         return
       }
       
-      console.log('useAuth: Profile fetched successfully:', { role: data.role, email: data.email })
+      logger.debug('Profile fetched successfully:', { role: data.role, email: data.email })
       setProfile(data)
       setProfileError(null)
     } catch (error) {
-      console.error('Error fetching profile:', error)
+      logger.error('Unexpected error fetching profile:', error)
       setProfileError('PROFILE_FETCH_ERROR')
       setProfile(null)
     } finally {
-      fetchingProfileRef.current = false
+      operationRefs.fetchingProfile.current = false
     }
   }
 
   const signOut = async () => {
-    console.log('useAuth: Signing out...')
+    logger.debug('Signing out...')
     try {
       const { error } = await supabase.auth.signOut()
       if (error) throw error
       
-      // Clear local state immediately
+      // Clear state immediately
       setUser(null)
       setProfile(null)
       setProfileError(null)
       setInitialized(false)
-      console.log('useAuth: Sign out successful, state cleared')
+      logger.debug('Sign out successful, state cleared')
     } catch (error) {
-      console.error('useAuth: Sign out error:', error)
+      logger.error('Sign out error:', error)
       throw error
     }
   }
 
   const createMissingProfile = async (user: User) => {
     try {
-      console.log('Creating missing profile for user:', user.id)
-      
-      const userRole = user.user_metadata?.role || 'user'
-      const userFullName = user.user_metadata?.full_name || ''
-      const userPhone = user.user_metadata?.phone || ''
+      logger.debug('Creating missing profile for user:', user.id)
       
       const profileData = {
         id: user.id,
         email: user.email || '',
-        full_name: userFullName,
-        phone: userPhone,
-        role: userRole
+        full_name: user.user_metadata?.full_name || '',
+        phone: user.user_metadata?.phone || '',
+        role: user.user_metadata?.role || 'user'
       }
-
-      console.log('Creating profile with data:', profileData)
 
       const { data, error } = await supabase
         .from('profiles')
@@ -120,16 +125,16 @@ export function useAuth() {
         .single()
 
       if (error) {
-        console.error('Error creating profile:', error)
+        logger.error('Error creating profile:', error)
         throw error
       }
 
-      console.log('Profile created successfully:', data)
+      logger.debug('Profile created successfully')
       setProfile(data)
       setProfileError(null)
       return data
     } catch (error) {
-      console.error('Failed to create profile:', error)
+      logger.error('Failed to create profile:', error)
       setProfileError('PROFILE_CREATE_ERROR')
       throw error
     }
@@ -138,41 +143,38 @@ export function useAuth() {
   useEffect(() => {
     let mounted = true
     
-    // Prevent multiple initializations
-    if (initializingRef.current) {
-      console.log('useAuth: Already initializing, skipping...')
+    if (operationRefs.initializing.current) {
+      logger.debug('Already initializing, skipping')
       return
     }
     
-    initializingRef.current = true
+    operationRefs.initializing.current = true
 
-    const getInitialSession = async () => {
+    const initializeAuth = async () => {
       try {
-        console.log('useAuth: Getting initial session...')
+        logger.debug('Getting initial session...')
         const { data: { session }, error } = await supabase.auth.getSession()
         
         if (error) {
-          console.error('useAuth: Session error:', error)
+          logger.error('Session error:', error)
           throw error
         }
         
         if (!mounted) return
         
-        console.log('useAuth: Session found:', !!session?.user, session?.user?.email)
-        
-        if (session?.user && session.user.email_confirmed_at) {
-          console.log('useAuth: User is authenticated and confirmed')
+        if (session?.user?.email_confirmed_at) {
+          logger.debug('User is authenticated and confirmed')
           setUser(session.user)
           await fetchProfile(session.user.id)
         } else {
-          console.log('useAuth: No authenticated user or email not confirmed')
+          logger.debug('No authenticated user or email not confirmed')
           setUser(null)
           setProfile(null)
           setProfileError(null)
         }
         
       } catch (error) {
-        console.error('useAuth: Error getting session:', error)
+        logger.error('Error during initialization:', error)
         if (mounted) {
           setUser(null)
           setProfile(null)
@@ -182,46 +184,47 @@ export function useAuth() {
         if (mounted) {
           setInitialized(true)
           setLoading(false)
-          console.log('useAuth: Initialization complete')
+          logger.debug('Initialization complete')
         }
       }
     }
 
-    getInitialSession()
+    initializeAuth()
 
-    // Shorter timeout to prevent long waits
+    // Timeout fallback
     const timeoutId = setTimeout(() => {
       if (mounted && !initialized) {
-        console.warn('useAuth: Timeout reached, forcing initialization complete')
+        logger.warn('Timeout reached, forcing initialization complete')
         setLoading(false)
         setInitialized(true)
       }
-    }, 3000)
+    }, 5000)
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, session) => {
-        console.log('useAuth: Auth state change:', event, session?.user?.email)
-        
         if (!mounted || !initialized) return
         
+        logger.debug('Auth state change:', event)
         clearTimeout(timeoutId)
         
-        if (event === 'SIGNED_IN' && session?.user?.email_confirmed_at) {
-          console.log('useAuth: User signed in')
-          setUser(session.user)
-          await fetchProfile(session.user.id)
-        } else if (event === 'SIGNED_OUT') {
-          console.log('useAuth: User signed out')
-          setUser(null)
-          setProfile(null)
-          setProfileError(null)
-        } else if (event === 'TOKEN_REFRESHED' && session?.user) {
-          console.log('useAuth: Token refreshed')
-          setUser(session.user)
-          // Only fetch profile if we don't have one
-          if (!profile && !fetchingProfileRef.current) {
-            await fetchProfile(session.user.id)
-          }
+        switch (event) {
+          case 'SIGNED_IN':
+            if (session?.user?.email_confirmed_at) {
+              setUser(session.user)
+              await fetchProfile(session.user.id)
+            }
+            break
+          case 'SIGNED_OUT':
+            setUser(null)
+            setProfile(null)
+            setProfileError(null)
+            break
+          case 'TOKEN_REFRESHED':
+            if (session?.user && !profile && !operationRefs.fetchingProfile.current) {
+              setUser(session.user)
+              await fetchProfile(session.user.id)
+            }
+            break
         }
       }
     )
@@ -230,9 +233,9 @@ export function useAuth() {
       mounted = false
       clearTimeout(timeoutId)
       subscription.unsubscribe()
-      initializingRef.current = false
+      operationRefs.initializing.current = false
     }
-  }, []) // Keep empty dependency array
+  }, []) // Empty dependency array is correct
 
   return {
     user,

@@ -1,4 +1,4 @@
-// src/hooks/useFlats.ts
+// src/hooks/useFlats.ts - Improved with proper error handling and schema consistency
 "use client"
 
 import { useState, useCallback } from 'react'
@@ -17,6 +17,20 @@ export type FlatFormData = {
   unit_number: string
 }
 
+// Define the correct column name for building-address relationship
+const BUILDING_ADDRESS_COLUMN = 'address' // Change this to 'address_id' if that's your actual column name
+
+const logger = {
+  debug: (message: string, data?: any) => {
+    if (process.env.NODE_ENV === 'development') {
+      console.log(`[useFlats] ${message}`, data || '')
+    }
+  },
+  error: (message: string, error?: any) => {
+    console.error(`[useFlats] ${message}`, error || '')
+  }
+}
+
 export const useFlats = () => {
   const [flats, setFlats] = useState<Flat[]>([])
   const [loading, setLoading] = useState(false)
@@ -29,28 +43,25 @@ export const useFlats = () => {
     setError(null)
     
     try {
-      console.log('Fetching flats for address:', addressId)
+      logger.debug('Fetching flats for address:', addressId)
       
       // Find the building for this address
       const { data: building, error: buildingError } = await supabase
         .from('buildings')
         .select('id')
-        .eq('address', addressId)
+        .eq(BUILDING_ADDRESS_COLUMN, addressId)
         .single()
 
       if (buildingError) {
         if (buildingError.code === 'PGRST116') {
-          // No building exists yet, that's fine
-          console.log('No building found for address, returning empty flats array')
+          logger.debug('No building found for address, returning empty flats array')
           setFlats([])
           return
         }
-        throw buildingError
+        throw new Error(`Failed to find building: ${buildingError.message}`)
       }
 
-      console.log('Building found:', building.id)
-
-      // Fetch flats for this building
+      // Fetch flats for this building with tenant information
       const { data, error } = await supabase
         .from('flats')
         .select(`
@@ -60,7 +71,9 @@ export const useFlats = () => {
         .eq('building_id', building.id)
         .order('unit_number', { ascending: true })
 
-      if (error) throw error
+      if (error) {
+        throw new Error(`Failed to fetch flats: ${error.message}`)
+      }
       
       // Transform the data to include tenant info
       const flatsWithTenants = data?.map(flat => ({
@@ -69,11 +82,12 @@ export const useFlats = () => {
         tenant_name: flat.tenant?.full_name || null
       })) || []
 
-      console.log('Flats fetched successfully:', flatsWithTenants.length)
+      logger.debug('Flats fetched successfully:', flatsWithTenants.length)
       setFlats(flatsWithTenants)
     } catch (error) {
-      console.error('Error fetching flats:', error)
-      setError('Failed to load flats')
+      const errorMessage = error instanceof Error ? error.message : 'Failed to load flats'
+      logger.error('Error fetching flats:', error)
+      setError(errorMessage)
       setFlats([])
     } finally {
       setLoading(false)
@@ -93,183 +107,76 @@ export const useFlats = () => {
     setError(null)
     
     try {
-      console.log('🏗️ Creating flat - step by step debugging:')
-      console.log('1. Input parameters:', { addressId, flatData, managerId, addressFullName })
+      logger.debug('Creating flat:', { addressId, unitNumber: flatData.unit_number })
 
-      // First, let's check what buildings exist in the database
-      const { data: allBuildings, error: allBuildingsError } = await supabase
-        .from('buildings')
-        .select('*')
-        .limit(5)
-
-      console.log('2. All buildings in database:', { allBuildings, allBuildingsError })
-      
-      if (allBuildings && allBuildings.length > 0) {
-        console.log('3. Buildings table columns:', Object.keys(allBuildings[0]))
-        console.log('4. Sample building record:', allBuildings[0])
-      }
-
-      // Check for duplicate unit numbers in the same building first
-      const { data: existingBuilding, error: existingBuildingError } = await supabase
+      // Check for existing building
+      const { data: existingBuilding, error: buildingLookupError } = await supabase
         .from('buildings')
         .select('id')
-        .eq('address', addressId)
+        .eq(BUILDING_ADDRESS_COLUMN, addressId)
         .single()
 
-      console.log('5. Existing building lookup result:', { existingBuilding, existingBuildingError })
-
-      if (existingBuilding) {
-        // Check if unit number already exists in this building
-        const { data: existingFlat } = await supabase
-          .from('flats')
-          .select('id')
-          .eq('building_id', existingBuilding.id)
-          .eq('unit_number', flatData.unit_number)
-          .single()
-
-        console.log('6. Existing flat check:', { existingFlat })
-
-        if (existingFlat) {
-          throw new Error(`Flat number "${flatData.unit_number}" already exists in this building`)
-        }
-      }
-
-      // Find or create building
       let buildingId = null
 
-      // Check if a building exists for this address
-      const { data: building, error: buildingError } = await supabase
-        .from('buildings')
-        .select('id')
-        .eq('address', addressId)
-        .single()
-
-      console.log('7. Building lookup result:', { building, buildingError })
-
-      if (buildingError && buildingError.code !== 'PGRST116') {
-        console.error('8. Building lookup failed with unexpected error:', {
-          error: buildingError,
-          code: buildingError.code,
-          message: buildingError.message,
-          details: buildingError.details,
-          hint: buildingError.hint
-        })
-        throw new Error(`Failed to find building: ${buildingError.message}`)
-      }
-
-      if (building) {
-        buildingId = building.id
-        console.log('9. Using existing building:', buildingId)
-      } else {
-        // Create a building for this address
-        console.log('10. No building found, creating new building...')
-        
-        const buildingData = {
-          name: `${addressFullName} Building`,
-          address: addressId,
-          manager_id: managerId
-        }
-        console.log('11. Building data to insert:', buildingData)
-        
+      if (buildingLookupError?.code === 'PGRST116') {
+        // No building exists, create one
+        logger.debug('Creating new building for address')
         const { data: newBuilding, error: createBuildingError } = await supabase
           .from('buildings')
-          .insert(buildingData)
+          .insert({
+            name: `${addressFullName} Building`,
+            [BUILDING_ADDRESS_COLUMN]: addressId,
+            manager_id: managerId
+          })
           .select('id')
           .single()
 
-        console.log('12. Building creation result:', { newBuilding, createBuildingError })
-
         if (createBuildingError) {
-          console.error('13. Building creation failed:', {
-            error: createBuildingError,
-            code: createBuildingError.code,
-            message: createBuildingError.message,
-            details: createBuildingError.details,
-            hint: createBuildingError.hint,
-            fullError: JSON.stringify(createBuildingError)
-          })
-          
-          // Try alternative column name
-          console.log('14. Trying alternative column name address_id...')
-          const buildingDataAlt = {
-            name: `${addressFullName} Building`,
-            address_id: addressId,
-            manager_id: managerId
-          }
-          console.log('15. Alternative building data:', buildingDataAlt)
-          
-          const { data: newBuildingAlt, error: createBuildingErrorAlt } = await supabase
-            .from('buildings')
-            .insert(buildingDataAlt)
-            .select('id')
-            .single()
-
-          console.log('16. Alternative building creation result:', { newBuildingAlt, createBuildingErrorAlt })
-
-          if (createBuildingErrorAlt) {
-            console.error('17. Alternative building creation also failed:', {
-              error: createBuildingErrorAlt,
-              code: createBuildingErrorAlt.code,
-              message: createBuildingErrorAlt.message,
-              details: createBuildingErrorAlt.details,
-              hint: createBuildingErrorAlt.hint
-            })
-            throw new Error(`Failed to create building: ${createBuildingError.message || 'Unknown error'}`)
-          }
-          
-          buildingId = newBuildingAlt.id
-          console.log('18. Created new building with alternative method:', buildingId)
-        } else {
-          buildingId = newBuilding.id
-          console.log('19. Created new building successfully:', buildingId)
+          throw new Error(`Failed to create building: ${createBuildingError.message}`)
         }
+        
+        buildingId = newBuilding.id
+      } else if (buildingLookupError) {
+        throw new Error(`Error checking for existing building: ${buildingLookupError.message}`)
+      } else {
+        buildingId = existingBuilding.id
       }
 
-      // Now create the flat
-      console.log('20. Creating flat in building:', buildingId)
-      const flatInsertData = {
-        building_id: buildingId,
-        unit_number: flatData.unit_number.trim()
+      // Check for duplicate flat number in the same building
+      const { data: existingFlat } = await supabase
+        .from('flats')
+        .select('id')
+        .eq('building_id', buildingId)
+        .eq('unit_number', flatData.unit_number.trim())
+        .single()
+
+      if (existingFlat) {
+        throw new Error(`Flat number "${flatData.unit_number}" already exists in this building`)
       }
-      console.log('21. Flat data to insert:', flatInsertData)
-      
+
+      // Create the flat
       const { data: newFlat, error: flatError } = await supabase
         .from('flats')
-        .insert(flatInsertData)
+        .insert({
+          building_id: buildingId,
+          unit_number: flatData.unit_number.trim()
+        })
         .select()
         .single()
 
-      console.log('22. Flat creation result:', { newFlat, flatError })
-
       if (flatError) {
-        console.error('23. Flat creation error:', {
-          error: flatError,
-          code: flatError.code,
-          message: flatError.message,
-          details: flatError.details,
-          hint: flatError.hint
-        })
         throw new Error(`Failed to create flat: ${flatError.message}`)
       }
 
-      console.log('24. ✅ Flat created successfully:', newFlat)
+      logger.debug('Flat created successfully:', newFlat.id)
 
       // Refresh flats list
-      console.log('25. Refreshing flats list...')
       await fetchFlatsForAddress(addressId)
       
-      console.log('26. ✅ Process completed successfully!')
       return { success: true, message: 'Flat created successfully!' }
     } catch (error) {
-      console.error('❌ Error creating flat:', error)
-      let errorMessage = 'Error creating flat'
-      
-      if (error instanceof Error) {
-        errorMessage = error.message
-      } else if (typeof error === 'object' && error !== null) {
-        errorMessage = JSON.stringify(error)
-      }
-      
+      const errorMessage = error instanceof Error ? error.message : 'Error creating flat'
+      logger.error('Error creating flat:', error)
       setError(errorMessage)
       throw new Error(errorMessage)
     }
@@ -277,55 +184,50 @@ export const useFlats = () => {
 
   const deleteFlat = async (flatId: string, addressId: string) => {
     try {
-      console.log('Deleting flat:', flatId)
+      logger.debug('Deleting flat:', flatId)
       
       const { error } = await supabase
         .from('flats')
         .delete()
         .eq('id', flatId)
 
-      if (error) throw error
+      if (error) {
+        throw new Error(`Failed to delete flat: ${error.message}`)
+      }
 
-      console.log('Flat deleted successfully')
-      
-      // Refresh flats list
+      logger.debug('Flat deleted successfully')
       await fetchFlatsForAddress(addressId)
       
       return { success: true, message: 'Flat deleted successfully!' }
     } catch (error) {
-      console.error('Error deleting flat:', error)
       const errorMessage = error instanceof Error ? error.message : 'Error deleting flat'
+      logger.error('Error deleting flat:', error)
       throw new Error(errorMessage)
     }
   }
 
   const removeTenant = async (flatId: string, addressId: string) => {
     try {
-      console.log('Removing tenant from flat:', flatId)
+      logger.debug('Removing tenant from flat:', flatId)
       
       const { error } = await supabase
         .from('flats')
         .update({ tenant_id: null })
         .eq('id', flatId)
 
-      if (error) throw error
+      if (error) {
+        throw new Error(`Failed to remove tenant: ${error.message}`)
+      }
 
-      console.log('Tenant removed successfully')
-      
-      // Refresh flats list
+      logger.debug('Tenant removed successfully')
       await fetchFlatsForAddress(addressId)
       
       return { success: true, message: 'Tenant removed successfully! Flat is now vacant.' }
     } catch (error) {
-      console.error('Error removing tenant:', error)
       const errorMessage = error instanceof Error ? error.message : 'Error removing tenant'
+      logger.error('Error removing tenant:', error)
       throw new Error(errorMessage)
     }
-  }
-
-  const clearFlats = () => {
-    setFlats([])
-    setError(null)
   }
 
   return {
@@ -335,7 +237,6 @@ export const useFlats = () => {
     fetchFlatsForAddress,
     createFlat,
     deleteFlat,
-    removeTenant,
-    clearFlats
+    removeTenant
   }
 }
