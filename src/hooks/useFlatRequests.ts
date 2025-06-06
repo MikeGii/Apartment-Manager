@@ -1,8 +1,11 @@
-// Fixed useFlatRequests.ts - Prevent multiple fetches and race conditions
+// src/hooks/useFlatRequests.ts - Cleaned version with proper error handling
 "use client"
 
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { supabase } from '@/lib/supabase'
+import { createLogger } from '@/utils/logger'
+
+const log = createLogger('useFlatRequests')
 
 export type FlatRequest = {
   id: string
@@ -21,39 +24,54 @@ export type FlatRequest = {
   user_email: string
 }
 
+type RequestsCache = {
+  userId?: string
+  userRole?: string
+  data: FlatRequest[]
+  timestamp: number
+}
+
 export const useFlatRequests = (userId?: string, userRole?: string) => {
   const [requests, setRequests] = useState<FlatRequest[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   
-  // Use refs to prevent multiple simultaneous fetches
+  // Prevent multiple simultaneous fetches and cache results
   const fetchingRef = useRef(false)
-  const lastParamsRef = useRef<{ userId?: string; userRole?: string }>({})
+  const cacheRef = useRef<RequestsCache | null>(null)
+  const CACHE_DURATION = 30000 // 30 seconds
 
-  const fetchRequests = useCallback(async () => {
+  const fetchRequests = useCallback(async (forceRefresh = false) => {
     if (!userId) {
-      console.log('useFlatRequests: No userId provided, skipping fetch')
+      log.debug('No userId provided, skipping fetch')
       return
     }
 
-    // Prevent multiple simultaneous fetches for the same parameters
-    const currentParams = { userId, userRole }
-    if (fetchingRef.current && 
-        lastParamsRef.current.userId === userId && 
-        lastParamsRef.current.userRole === userRole) {
-      console.log('useFlatRequests: Fetch already in progress for these params, skipping...')
+    // Check cache first
+    const now = Date.now()
+    if (!forceRefresh && cacheRef.current && 
+        cacheRef.current.userId === userId && 
+        cacheRef.current.userRole === userRole &&
+        (now - cacheRef.current.timestamp) < CACHE_DURATION) {
+      log.debug('Using cached requests data')
+      setRequests(cacheRef.current.data)
+      return
+    }
+
+    // Prevent multiple simultaneous fetches
+    if (fetchingRef.current) {
+      log.debug('Fetch already in progress, skipping')
       return
     }
 
     fetchingRef.current = true
-    lastParamsRef.current = currentParams
     setLoading(true)
     setError(null)
     
     try {
-      console.log('useFlatRequests: Fetching requests for user:', userId, 'with role:', userRole)
+      log.debug('Fetching requests for user:', userId, 'with role:', userRole)
 
-      // Simple query first - get raw requests
+      // Build base query
       let baseQuery = supabase
         .from('flat_registration_requests')
         .select('*')
@@ -62,183 +80,135 @@ export const useFlatRequests = (userId?: string, userRole?: string) => {
       // Filter based on user role
       if (userRole === 'user') {
         baseQuery = baseQuery.eq('user_id', userId)
-        console.log('useFlatRequests: Filtering for user requests only')
-      } else {
-        console.log('useFlatRequests: Getting all requests (building manager/admin view)')
+        log.debug('Filtering for user requests only')
       }
 
       const { data: rawRequests, error: requestsError } = await baseQuery
 
       if (requestsError) {
-        console.error('Requests query error:', requestsError)
-        throw new Error(`Failed to fetch requests: ${requestsError.message || 'Unknown error'}`)
+        throw new Error(`Failed to fetch requests: ${requestsError.message}`)
       }
 
-      console.log('useFlatRequests: Raw requests fetched:', rawRequests?.length || 0, 'requests')
-
       if (!rawRequests || rawRequests.length === 0) {
-        console.log('useFlatRequests: No requests found')
-        setRequests([])
+        log.debug('No requests found')
+        const emptyResult: FlatRequest[] = []
+        setRequests(emptyResult)
+        cacheRef.current = { userId, userRole, data: emptyResult, timestamp: now }
         return
       }
 
-      // Manually fetch related data for each request - simplified approach
+      log.debug(`Processing ${rawRequests.length} requests`)
+
+      // Enrich requests with related data
       const enrichedRequests = await Promise.all(
-        rawRequests.map(async (request) => {
+        rawRequests.map(async (request): Promise<FlatRequest> => {
+          const result: FlatRequest = {
+            id: request.id,
+            flat_id: request.flat_id,
+            user_id: request.user_id,
+            status: request.status,
+            requested_at: request.requested_at,
+            reviewed_at: request.reviewed_at,
+            reviewed_by: request.reviewed_by,
+            notes: request.notes,
+            unit_number: 'Loading...',
+            building_name: 'Loading...',
+            address_full: 'Loading...',
+            user_name: undefined,
+            user_email: 'Loading...'
+          }
+
           try {
-            console.log('useFlatRequests: Processing request:', request.id)
+            // Get flat and building data in one go with proper typing
+            const { data: flatData, error: flatError } = await supabase
+              .from('flats')
+              .select(`
+                unit_number,
+                buildings (
+                  name,
+                  addresses (
+                    street_and_number,
+                    settlements (
+                      name,
+                      settlement_type,
+                      municipalities (
+                        name,
+                        counties (
+                          name
+                        )
+                      )
+                    )
+                  )
+                )
+              `)
+              .eq('id', request.flat_id)
+              .single()
 
-            // Initialize with defaults
-            let unitNumber = 'Unknown'
-            let buildingName = 'Unknown Building'
-            let addressFull = 'Unknown Address'
-            let userName = undefined
-            let userEmail = 'Unknown Email'
-
-            // Get flat data
-            try {
-              const { data: flatData, error: flatError } = await supabase
-                .from('flats')
-                .select('unit_number, building_id')
-                .eq('id', request.flat_id)
-                .single()
-
-              if (!flatError && flatData) {
-                unitNumber = flatData.unit_number
-                console.log('useFlatRequests: Got flat data:', flatData)
-
-                // Get building data
-                if (flatData.building_id) {
-                  const { data: buildingData, error: buildingError } = await supabase
-                    .from('buildings')
-                    .select('name, address')
-                    .eq('id', flatData.building_id)
-                    .single()
-
-                  if (!buildingError && buildingData) {
-                    buildingName = buildingData.name
-                    console.log('useFlatRequests: Got building data:', buildingData)
-
-                    // Get address data
-                    if (buildingData.address) {
-                      const { data: addressData, error: addressError } = await supabase
-                        .from('addresses')
-                        .select('street_and_number, settlement_id')
-                        .eq('id', buildingData.address)
-                        .single()
-
-                      if (!addressError && addressData) {
-                        // Start with street and number
-                        addressFull = addressData.street_and_number
-
-                        // Try to get full location data
-                        try {
-                          const { data: settlement, error: settlementError } = await supabase
-                            .from('settlements')
-                            .select('name, settlement_type, municipality_id')
-                            .eq('id', addressData.settlement_id)
-                            .single()
-
-                          if (!settlementError && settlement) {
-                            const { data: municipality, error: municipalityError } = await supabase
-                              .from('municipalities')
-                              .select('name, county_id')
-                              .eq('id', settlement.municipality_id)
-                              .single()
-
-                            if (!municipalityError && municipality) {
-                              const { data: county, error: countyError } = await supabase
-                                .from('counties')
-                                .select('name')
-                                .eq('id', municipality.county_id)
-                                .single()
-
-                              if (!countyError && county) {
-                                addressFull = `${addressData.street_and_number}, ${settlement.name} ${settlement.settlement_type}, ${municipality.name}, ${county.name}`
-                              }
-                            }
-                          }
-                        } catch (locationErr) {
-                          console.warn('useFlatRequests: Could not fetch full location:', locationErr)
-                        }
-
-                        console.log('useFlatRequests: Got address data, full address:', addressFull)
-                      }
-                    }
+            if (!flatError && flatData) {
+              result.unit_number = flatData.unit_number
+              
+              // Type the building data properly
+              const building = flatData.buildings as any
+              if (building) {
+                result.building_name = building.name
+                
+                // Type the address data properly
+                const address = building.addresses as any
+                if (address) {
+                  const settlement = address.settlements as any
+                  const municipality = settlement?.municipalities as any
+                  const county = municipality?.[0]?.counties as any
+                  
+                  if (settlement && municipality && county) {
+                    result.address_full = `${address.street_and_number}, ${settlement.name} ${settlement.settlement_type}, ${municipality[0].name}, ${county[0].name}`
+                  } else {
+                    result.address_full = address.street_and_number
                   }
                 }
               }
-            } catch (flatErr) {
-              console.warn('useFlatRequests: Error fetching flat data:', flatErr)
+            } else {
+              log.warn('Could not fetch flat data for request:', request.id)
+              result.unit_number = 'Unknown'
+              result.building_name = 'Unknown'
+              result.address_full = 'Unknown'
             }
 
             // Get user data
-            if (request.user_id) {
-              try {
-                const { data: userData, error: userError } = await supabase
-                  .from('profiles')
-                  .select('full_name, email')
-                  .eq('id', request.user_id)
-                  .single()
+            const { data: userData, error: userError } = await supabase
+              .from('profiles')
+              .select('full_name, email')
+              .eq('id', request.user_id)
+              .single()
 
-                if (!userError && userData) {
-                  userName = userData.full_name
-                  userEmail = userData.email || userEmail
-                  console.log('useFlatRequests: Got user data:', userData)
-                }
-              } catch (userErr) {
-                console.warn('useFlatRequests: Error fetching user data:', userErr)
-              }
+            if (!userError && userData) {
+              result.user_name = userData.full_name
+              result.user_email = userData.email
+            } else {
+              log.warn('Could not fetch user data for request:', request.id)
+              result.user_email = 'Unknown'
             }
 
-            return {
-              id: request.id,
-              flat_id: request.flat_id,
-              user_id: request.user_id,
-              status: request.status,
-              requested_at: request.requested_at,
-              reviewed_at: request.reviewed_at,
-              reviewed_by: request.reviewed_by,
-              notes: request.notes,
-              unit_number: unitNumber,
-              building_name: buildingName,
-              address_full: addressFull,
-              user_name: userName,
-              user_email: userEmail
-            }
-          } catch (requestProcessingError) {
-            console.error('useFlatRequests: Error processing individual request:', request.id, requestProcessingError)
-            // Return a minimal request object even if processing fails
-            return {
-              id: request.id,
-              flat_id: request.flat_id,
-              user_id: request.user_id,
-              status: request.status,
-              requested_at: request.requested_at,
-              reviewed_at: request.reviewed_at,
-              reviewed_by: request.reviewed_by,
-              notes: request.notes,
-              unit_number: 'Error loading',
-              building_name: 'Error loading',
-              address_full: 'Error loading',
-              user_name: undefined,
-              user_email: 'Error loading'
-            }
+          } catch (processingError) {
+            log.error('Error processing request:', request.id, processingError)
+            result.unit_number = 'Error'
+            result.building_name = 'Error'
+            result.address_full = 'Error'
+            result.user_email = 'Error'
           }
+
+          return result
         })
       )
 
-      console.log('useFlatRequests: Successfully processed', enrichedRequests.length, 'requests')
+      log.debug(`Successfully processed ${enrichedRequests.length} requests`)
       setRequests(enrichedRequests)
       
+      // Cache the results
+      cacheRef.current = { userId, userRole, data: enrichedRequests, timestamp: now }
+      
     } catch (error) {
-      console.error('Error in fetchRequests:', error)
-      
-      let errorMessage = 'Failed to load registration requests'
-      if (error instanceof Error) {
-        errorMessage = error.message
-      }
-      
+      const errorMessage = error instanceof Error ? error.message : 'Failed to load registration requests'
+      log.error('Error in fetchRequests:', error)
       setError(errorMessage)
       setRequests([])
     } finally {
@@ -249,6 +219,8 @@ export const useFlatRequests = (userId?: string, userRole?: string) => {
 
   const createRequest = async (flatId: string, userId: string) => {
     try {
+      log.debug('Creating request for flat:', flatId)
+      
       // Check if request already exists
       const { data: existing } = await supabase
         .from('flat_registration_requests')
@@ -269,18 +241,29 @@ export const useFlatRequests = (userId?: string, userRole?: string) => {
           user_id: userId
         })
 
-      if (error) throw error
+      if (error) {
+        log.error('Error creating request:', error)
+        throw error
+      }
 
-      await fetchRequests()
+      log.info('Request created successfully')
+      
+      // Clear cache and refresh
+      cacheRef.current = null
+      await fetchRequests(true)
+      
       return { success: true, message: 'Registration request submitted! Building manager will review it.' }
     } catch (error) {
-      console.error('Error creating request:', error)
-      return { success: false, message: 'Error submitting request' }
+      const errorMessage = error instanceof Error ? error.message : 'Error submitting request'
+      log.error('Create request failed:', errorMessage)
+      return { success: false, message: errorMessage }
     }
   }
 
   const approveRequest = async (requestId: string, notes?: string) => {
     try {
+      log.debug('Approving request:', requestId)
+      
       // Get the request details
       const { data: request } = await supabase
         .from('flat_registration_requests')
@@ -288,7 +271,9 @@ export const useFlatRequests = (userId?: string, userRole?: string) => {
         .eq('id', requestId)
         .single()
 
-      if (!request) throw new Error('Request not found')
+      if (!request) {
+        throw new Error('Request not found')
+      }
 
       // Update the flat to assign the tenant
       const { error: flatError } = await supabase
@@ -296,7 +281,10 @@ export const useFlatRequests = (userId?: string, userRole?: string) => {
         .update({ tenant_id: request.user_id })
         .eq('id', request.flat_id)
 
-      if (flatError) throw flatError
+      if (flatError) {
+        log.error('Error updating flat:', flatError)
+        throw flatError
+      }
 
       // Update the request status
       const { error: requestError } = await supabase
@@ -309,18 +297,29 @@ export const useFlatRequests = (userId?: string, userRole?: string) => {
         })
         .eq('id', requestId)
 
-      if (requestError) throw requestError
+      if (requestError) {
+        log.error('Error updating request:', requestError)
+        throw requestError
+      }
 
-      await fetchRequests()
+      log.info('Request approved successfully')
+      
+      // Clear cache and refresh
+      cacheRef.current = null
+      await fetchRequests(true)
+      
       return { success: true, message: 'Request approved successfully!' }
     } catch (error) {
-      console.error('Error approving request:', error)
-      return { success: false, message: 'Error approving request' }
+      const errorMessage = error instanceof Error ? error.message : 'Error approving request'
+      log.error('Approve request failed:', errorMessage)
+      return { success: false, message: errorMessage }
     }
   }
 
   const rejectRequest = async (requestId: string, notes?: string) => {
     try {
+      log.debug('Rejecting request:', requestId)
+      
       const { error } = await supabase
         .from('flat_registration_requests')
         .update({
@@ -331,20 +330,28 @@ export const useFlatRequests = (userId?: string, userRole?: string) => {
         })
         .eq('id', requestId)
 
-      if (error) throw error
+      if (error) {
+        log.error('Error rejecting request:', error)
+        throw error
+      }
 
-      await fetchRequests()
+      log.info('Request rejected successfully')
+      
+      // Clear cache and refresh
+      cacheRef.current = null
+      await fetchRequests(true)
+      
       return { success: true, message: 'Request rejected.' }
     } catch (error) {
-      console.error('Error rejecting request:', error)
-      return { success: false, message: 'Error rejecting request' }
+      const errorMessage = error instanceof Error ? error.message : 'Error rejecting request'
+      log.error('Reject request failed:', errorMessage)
+      return { success: false, message: errorMessage }
     }
   }
 
-  // Only fetch when userId or userRole changes
+  // Fetch when parameters change
   useEffect(() => {
-    if (userId && (userId !== lastParamsRef.current.userId || userRole !== lastParamsRef.current.userRole)) {
-      console.log('useFlatRequests: Parameters changed, fetching requests...')
+    if (userId) {
       fetchRequests()
     }
   }, [userId, userRole, fetchRequests])
@@ -353,7 +360,7 @@ export const useFlatRequests = (userId?: string, userRole?: string) => {
     requests,
     loading,
     error,
-    fetchRequests,
+    fetchRequests: () => fetchRequests(true),
     createRequest,
     approveRequest,
     rejectRequest
