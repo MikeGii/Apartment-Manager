@@ -1,4 +1,4 @@
-// Updated PageHeader.tsx - Proper role display
+// Updated PageHeader.tsx - Proper role display without duplicate navigation
 "use client"
 
 interface Profile {
@@ -40,40 +40,7 @@ export const PageHeader = ({ title, profile }: PageHeaderProps) => {
               {getRoleDisplayName(profile.role)}
             </span>
             
-            {/* Navigation Links based on role */}
-            {profile.role === 'user' && (
-              <a
-                href="/my-flats"
-                className="text-sm bg-green-600 hover:bg-green-700 text-white px-3 py-1 rounded-md transition-colors font-medium"
-              >
-                My Flats
-              </a>
-            )}
-            
-            {(profile.role === 'building_manager' || profile.role === 'admin') && (
-              <a
-                href="/buildings"
-                className="text-sm bg-green-600 hover:bg-green-700 text-white px-3 py-1 rounded-md transition-colors font-medium"
-              >
-                Manage Buildings
-              </a>
-            )}
-            
-            <a
-              href="/dashboard"
-              className="text-sm bg-blue-600 hover:bg-blue-700 text-white px-3 py-1 rounded-md transition-colors font-medium"
-            >
-              Back to Dashboard
-            </a>
-            
-            {profile?.role === 'admin' && (
-              <a
-                href="/admin"
-                className="text-sm bg-red-600 hover:bg-red-700 text-white px-3 py-1 rounded-md transition-colors font-medium"
-              >
-                Admin Panel
-              </a>
-            )}
+            {/* Clean header - no navigation buttons */}
           </div>
         </div>
       </div>

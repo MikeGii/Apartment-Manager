@@ -1,4 +1,4 @@
-// src/components/dashboard/ManagerDashboard.tsx - Building Manager specific dashboard
+// src/components/dashboard/ManagerDashboard.tsx - Updated with separate page links
 "use client"
 
 import { WelcomeCard } from './shared/WelcomeCard'
@@ -30,7 +30,7 @@ export const ManagerDashboard = ({ userName }: ManagerDashboardProps) => {
         subtitle="Oversee addresses, buildings, flats, and tenant operations with comprehensive management tools"
         gradient="from-blue-600 to-indigo-600"
       >
-        {/* Manager Quick Options - 6 Cards in 2 rows */}
+        {/* Manager Quick Options - Updated Links */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           
           {/* Address Management */}
@@ -43,7 +43,7 @@ export const ManagerDashboard = ({ userName }: ManagerDashboardProps) => {
               </svg>
             }
             title="Address Management"
-            subtitle="Manage property addresses"
+            subtitle="Submit & track address requests"
             gradient="from-emerald-500 to-green-600 border-emerald-300"
           />
 
@@ -56,27 +56,13 @@ export const ManagerDashboard = ({ userName }: ManagerDashboardProps) => {
               </svg>
             }
             title="Building Management"
-            subtitle="Oversee your buildings"
+            subtitle="Manage buildings & flats"
             gradient="from-blue-500 to-blue-600 border-blue-300"
           />
 
-          {/* Flats Management */}
+          {/* Registration Requests - Legacy link for now */}
           <QuickActionCard
-            href="/flats-management"
-            icon={
-              <svg className="w-6 h-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2H5a2 2 0 00-2-2z" />
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V5a2 2 0 012-2h4a2 2 0 012 2v2" />
-              </svg>
-            }
-            title="Flats Management"
-            subtitle="Manage individual flats"
-            gradient="from-indigo-500 to-purple-600 border-indigo-300"
-          />
-
-          {/* Registration Requests */}
-          <QuickActionCard
-            href="/registration-requests"
+            href="/buildings"
             icon={
               <svg className="w-6 h-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
@@ -112,6 +98,19 @@ export const ManagerDashboard = ({ userName }: ManagerDashboardProps) => {
             title="My Settings"
             subtitle="Coming soon"
             gradient="from-gray-500 to-slate-600 border-gray-300"
+            disabled
+          />
+
+          {/* Reports & Analytics */}
+          <QuickActionCard
+            icon={
+              <svg className="w-6 h-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+              </svg>
+            }
+            title="Reports & Analytics"
+            subtitle="Coming soon"
+            gradient="from-indigo-500 to-purple-600 border-indigo-300"
             disabled
           />
         </div>
@@ -188,17 +187,17 @@ export const ManagerDashboard = ({ userName }: ManagerDashboardProps) => {
               variant="primary"
               icon={<span>🏢</span>}
             >
-              Add New Building
+              Manage Buildings
             </ActionButton>
             <ActionButton
-              href="/flats-management"
+              href="/building-management"
               variant="secondary"
               icon={<span>🏠</span>}
             >
               Manage Flats
             </ActionButton>
             <ActionButton
-              href="/registration-requests"
+              href="/buildings"
               variant="warning"
               icon={<span>✅</span>}
             >
@@ -237,8 +236,8 @@ export const ManagerDashboard = ({ userName }: ManagerDashboardProps) => {
                 </svg>
               </div>
               <div className="flex-1">
-                <p className="text-sm font-medium text-gray-900">Flat registration approved</p>
-                <p className="text-xs text-gray-500">Flat 1B at Tallinna 15 - 1 day ago</p>
+                <p className="text-sm font-medium text-gray-900">Address request approved</p>
+                <p className="text-xs text-gray-500">Tallinna 15 - 1 day ago</p>
               </div>
               <span className="px-2 py-1 text-xs font-semibold rounded-full bg-green-100 text-green-800">
                 Approved
@@ -248,12 +247,12 @@ export const ManagerDashboard = ({ userName }: ManagerDashboardProps) => {
             <div className="flex items-center space-x-4 p-4 bg-blue-50 rounded-lg border border-blue-200">
               <div className="bg-blue-100 rounded-full p-2">
                 <svg className="w-4 h-4 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2H5a2 2 0 00-2-2z" />
                 </svg>
               </div>
               <div className="flex-1">
-                <p className="text-sm font-medium text-gray-900">New building added</p>
-                <p className="text-xs text-gray-500">Tartu 25 Building - 2 days ago</p>
+                <p className="text-sm font-medium text-gray-900">New flat added</p>
+                <p className="text-xs text-gray-500">Flat 3B at Tartu 25 - 2 days ago</p>
               </div>
               <span className="px-2 py-1 text-xs font-semibold rounded-full bg-blue-100 text-blue-800">
                 New
