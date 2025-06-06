@@ -1,4 +1,4 @@
-// Fixed admin/page.tsx - Removed all status references
+// src/app/admin/page.tsx - Complete admin page with auto building creation
 "use client"
 
 import { useAuth } from '@/hooks/useAuth'
@@ -35,6 +35,7 @@ export default function AdminDashboard() {
   const [loadingAddresses, setLoadingAddresses] = useState(true)
   const [processingUser, setProcessingUser] = useState<string | null>(null)
   const [processingAddress, setProcessingAddress] = useState<string | null>(null)
+  const [fixingAddresses, setFixingAddresses] = useState(false)
 
   // Redirect if not admin
   useEffect(() => {
@@ -109,10 +110,11 @@ export default function AdminDashboard() {
 
       // Transform the data
       const transformedData = (data || []).map((address: any) => {
-        const settlement = address.settlements
-        const municipality = settlement?.municipalities
-        const county = municipality?.counties
-        const creator = address.profiles
+        // Handle nested objects - Supabase can return arrays or single objects
+        const settlement = Array.isArray(address.settlements) ? address.settlements[0] : address.settlements
+        const municipality = Array.isArray(settlement?.municipalities) ? settlement.municipalities[0] : settlement?.municipalities
+        const county = Array.isArray(municipality?.counties) ? municipality.counties[0] : municipality?.counties
+        const creator = Array.isArray(address.profiles) ? address.profiles[0] : address.profiles
 
         return {
           id: address.id,
@@ -204,12 +206,14 @@ export default function AdminDashboard() {
     }
   }
 
+  // Updated function to create building when approving address
   const updateAddressStatus = async (addressId: string, newStatus: 'approved' | 'rejected') => {
     setProcessingAddress(addressId)
     try {
       console.log('Updating address status:', { addressId, newStatus })
       
-      const { error } = await supabase
+      // First, update the address status
+      const { error: updateError } = await supabase
         .from('addresses')
         .update({ 
           status: newStatus, 
@@ -218,9 +222,38 @@ export default function AdminDashboard() {
         })
         .eq('id', addressId)
 
-      if (error) {
-        console.error('Supabase error details:', error)
-        throw error
+      if (updateError) {
+        console.error('Supabase error details:', updateError)
+        throw updateError
+      }
+
+      // If approved, automatically create the building
+      if (newStatus === 'approved') {
+        console.log('Creating building for approved address...')
+        
+        // Get the full address details and creator info
+        const currentAddress = pendingAddresses.find(addr => addr.id === addressId)
+        if (!currentAddress) {
+          throw new Error('Address not found in current list')
+        }
+
+        // Create the building - use your actual column names
+        const { error: buildingError } = await supabase
+          .from('buildings')
+          .insert({
+            address: addressId, // Use 'address' column based on your CSV data
+            name: currentAddress.full_address, // Use full address as building name
+            manager_id: currentAddress.created_by, // Use manager_id (not building_manager_id)
+            created_at: new Date().toISOString()
+          })
+
+        if (buildingError) {
+          console.error('Error creating building:', buildingError)
+          // Don't throw here - address is still approved even if building creation fails
+          alert(`Address approved successfully, but there was an issue creating the building: ${buildingError.message}. Please contact support.`)
+        } else {
+          console.log('Building created successfully for approved address')
+        }
       }
 
       console.log('Address status updated successfully')
@@ -228,12 +261,106 @@ export default function AdminDashboard() {
       // Remove from pending list
       setPendingAddresses(pendingAddresses.filter(addr => addr.id !== addressId))
 
-      alert(`Address ${newStatus} successfully!${newStatus === 'approved' ? ' Building managers can now add flats to this address.' : ''}`)
+      alert(`Address ${newStatus} successfully!${newStatus === 'approved' ? ' Building has been created and the manager can now add flats.' : ''}`)
     } catch (error: any) {
       console.error('Error updating address status:', error)
       alert(`Error updating address status: ${error.message || 'Unknown error'}`)
     } finally {
       setProcessingAddress(null)
+    }
+  }
+
+  // Utility function to fix existing approved addresses without buildings
+  const fixExistingAddresses = async () => {
+    setFixingAddresses(true)
+    try {
+      console.log('Starting to fix existing approved addresses...')
+
+      // Find approved addresses that don't have buildings
+      const { data: approvedAddresses, error: addressError } = await supabase
+        .from('addresses')
+        .select(`
+          id,
+          street_and_number,
+          created_by,
+          settlements (
+            name,
+            settlement_type,
+            municipalities (
+              name,
+              counties (
+                name
+              )
+            )
+          )
+        `)
+        .eq('status', 'approved')
+
+      if (addressError) {
+        throw addressError
+      }
+
+      // Get existing buildings to check which addresses already have buildings
+      const { data: existingBuildings, error: buildingError } = await supabase
+        .from('buildings')
+        .select('address') // Use 'address' column instead of 'address_id'
+
+      if (buildingError) {
+        throw buildingError
+      }
+
+      const existingBuildingAddressIds = new Set(
+        existingBuildings?.map(b => b.address) || [] // Use 'address' column
+      )
+
+      // Filter addresses that don't have buildings
+      const addressesWithoutBuildings = approvedAddresses?.filter(
+        addr => !existingBuildingAddressIds.has(addr.id)
+      ) || []
+
+      console.log(`Found ${addressesWithoutBuildings.length} approved addresses without buildings`)
+
+      if (addressesWithoutBuildings.length === 0) {
+        alert('All approved addresses already have buildings!')
+        return
+      }
+
+      // Create buildings for these addresses - handle nested objects properly
+      const buildingsToCreate = addressesWithoutBuildings.map(address => {
+        // Handle nested objects - Supabase can return arrays or single objects
+        const settlement = Array.isArray(address.settlements) ? address.settlements[0] : address.settlements
+        const municipality = Array.isArray(settlement?.municipalities) ? settlement.municipalities[0] : settlement?.municipalities
+        const county = Array.isArray(municipality?.counties) ? municipality.counties[0] : municipality?.counties
+        
+        const fullAddress = settlement 
+          ? `${address.street_and_number}, ${settlement.name} ${settlement.settlement_type}, ${municipality.name}, ${county.name}`
+          : address.street_and_number
+
+        return {
+          address: address.id, // Use 'address' column based on your CSV structure
+          name: fullAddress,
+          manager_id: address.created_by, // Use manager_id to match your schema
+          created_at: new Date().toISOString()
+        }
+      })
+
+      // Batch insert buildings
+      const { error: insertError } = await supabase
+        .from('buildings')
+        .insert(buildingsToCreate)
+
+      if (insertError) {
+        throw insertError
+      }
+
+      console.log(`Successfully created ${buildingsToCreate.length} buildings`)
+      alert(`Successfully created buildings for ${buildingsToCreate.length} approved addresses!`)
+
+    } catch (error: any) {
+      console.error('Error fixing existing addresses:', error)
+      alert(`Error fixing existing addresses: ${error.message || 'Unknown error'}`)
+    } finally {
+      setFixingAddresses(false)
     }
   }
 
@@ -351,6 +478,34 @@ export default function AdminDashboard() {
                       <dd className="text-lg font-medium text-gray-900">{pendingAddresses.length}</dd>
                     </dl>
                   </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Utility Fix Button */}
+          <div className="bg-yellow-50 border-l-4 border-yellow-400 p-4 mb-8">
+            <div className="flex">
+              <div className="flex-shrink-0">
+                <svg className="h-5 w-5 text-yellow-400" viewBox="0 0 20 20" fill="currentColor">
+                  <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+                </svg>
+              </div>
+              <div className="ml-3">
+                <h3 className="text-sm font-medium text-yellow-800">
+                  Fix Existing Approved Addresses
+                </h3>
+                <div className="mt-2 text-sm text-yellow-700">
+                  <p>If you have approved addresses that don't show up in Building Management, click this button to create missing buildings.</p>
+                </div>
+                <div className="mt-4">
+                  <button
+                    onClick={fixExistingAddresses}
+                    disabled={fixingAddresses}
+                    className="bg-yellow-600 hover:bg-yellow-700 disabled:opacity-50 text-white px-4 py-2 rounded-md text-sm font-medium"
+                  >
+                    {fixingAddresses ? 'Creating Buildings...' : 'Create Missing Buildings'}
+                  </button>
                 </div>
               </div>
             </div>
