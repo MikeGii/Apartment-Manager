@@ -1,10 +1,16 @@
-// src/components/flats/BuildingSelector.tsx
+// src/components/flats/BuildingSelector.tsx - Cleaned with proper error handling
 "use client"
 
 import { useState, useEffect } from 'react'
 import { UseFormRegister, FieldErrors, UseFormSetValue } from 'react-hook-form'
 import { supabase } from '@/lib/supabase'
 import { FlatRegistrationData } from '@/hooks/useUserFlats'
+import { createLogger } from '@/utils/logger'
+
+const log = createLogger('BuildingSelector')
+
+// Use consistent column name - UPDATE THIS based on your schema choice
+const BUILDING_ADDRESS_COLUMN = 'address' // Change to 'address_id' if that's your choice
 
 interface Building {
   id: string
@@ -35,6 +41,7 @@ export const BuildingSelector = ({
 }: BuildingSelectorProps) => {
   const [buildings, setBuildings] = useState<Building[]>([])
   const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
   const [showManualInput, setShowManualInput] = useState(false)
 
   useEffect(() => {
@@ -42,185 +49,131 @@ export const BuildingSelector = ({
       fetchBuildingsForSettlement(watchedSettlement)
     } else {
       setBuildings([])
+      setError(null)
     }
   }, [watchedSettlement])
 
   const fetchBuildingsForSettlement = async (settlementId: string) => {
     setLoading(true)
+    setError(null)
+    
     try {
-      console.log('Fetching buildings for settlement:', settlementId)
+      log.debug('Fetching buildings for settlement:', settlementId)
       
-      // First, let's check what buildings exist in the database
-      const { data: allBuildings, error: allBuildingsError } = await supabase
-        .from('buildings')
-        .select('*')
-        .limit(10)
-
-      console.log('All buildings in database:', allBuildings, allBuildingsError)
-
-      // Let's also check the actual column names in buildings table
-      if (allBuildings && allBuildings.length > 0) {
-        console.log('Buildings table columns:', Object.keys(allBuildings[0]))
-        console.log('Sample building record:', allBuildings[0])
-      }
-
-      // Now let's fetch addresses in this settlement
-      const { data: addressesInSettlement, error: addressesError } = await supabase
+      // Get approved addresses in this settlement
+      const { data: addresses, error: addressError } = await supabase
         .from('addresses')
-        .select('*')
+        .select('id, street_and_number')
         .eq('settlement_id', settlementId)
         .eq('status', 'approved')
 
-      console.log('Addresses in settlement:', addressesInSettlement, addressesError)
+      if (addressError) {
+        throw new Error(`Failed to fetch addresses: ${addressError.message}`)
+      }
 
-      if (!addressesInSettlement || addressesInSettlement.length === 0) {
-        console.log('No approved addresses in this settlement')
+      if (!addresses || addresses.length === 0) {
+        log.debug('No approved addresses in this settlement')
         setBuildings([])
         return
       }
 
-      // Extract address IDs
-      const addressIds = addressesInSettlement.map(addr => addr.id)
-      console.log('Looking for buildings with address IDs:', addressIds)
+      const addressIds = addresses.map(addr => addr.id)
+      log.debug(`Found ${addresses.length} approved addresses`)
 
-      // Corrected query - using 'addresses' (the table name) as the foreign key relationship
-      const { data, error } = await supabase
+      // Get buildings for these addresses
+      const { data: buildingsData, error: buildingsError } = await supabase
         .from('buildings')
-        .select(`
-          id,
-          name,
-          address,
-          addresses:address (
-            id,
-            street_and_number,
-            settlement_id,
-            status,
-            settlements (
-              name,
-              settlement_type,
-              municipalities (
-                name,
-                counties (
-                  name
-                )
-              )
-            )
-          )
-        `)
-        .in('address', addressIds)
+        .select(`id, name, ${BUILDING_ADDRESS_COLUMN}`)
+        .in(BUILDING_ADDRESS_COLUMN, addressIds)
 
-      console.log('Buildings query result:', { data, error })
+      if (buildingsError) {
+        throw new Error(`Failed to fetch buildings: ${buildingsError.message}`)
+      }
 
-      if (error) {
-        console.error('Buildings query error details:', {
-          error,
-          code: error.code,
-          message: error.message,
-          details: error.details,
-          hint: error.hint,
-          fullError: JSON.stringify(error)
-        })
-        
-        // If the relationship is still wrong, let's try a simpler approach
-        console.log('Relationship error detected, trying alternative approach...')
-        
-        // Alternative: get buildings by address IDs directly
-        const { data: buildingsAlt, error: errorAlt } = await supabase
-          .from('buildings')
-          .select('*')
-          .in('address', addressIds)  // Use 'address' column as confirmed by logs
-
-        console.log('Alternative buildings query:', { buildingsAlt, errorAlt })
-
-        if (errorAlt) {
-          throw errorAlt
-        }
-
-        // Manually fetch address details for each building
-        const buildingsWithAddresses = await Promise.all(
-          (buildingsAlt || []).map(async (building) => {
-            const addressData = addressesInSettlement.find(addr => addr.id === building.address)
-            
-            if (addressData) {
-              // Fetch settlement details
-              const { data: settlement } = await supabase
-                .from('settlements')
-                .select(`
-                  name,
-                  settlement_type,
-                  municipalities (
-                    name,
-                    counties (
-                      name
-                    )
-                  )
-                `)
-                .eq('id', addressData.settlement_id)
-                .single()
-
-              const municipality = settlement?.municipalities?.[0]
-              const county = municipality?.counties?.[0]
-
-              return {
-                id: building.id,
-                name: building.name,
-                address_id: building.address,
-                street_and_number: addressData.street_and_number,
-                settlement_name: settlement?.name || 'Unknown',
-                settlement_type: settlement?.settlement_type || '',
-                municipality_name: municipality?.name || 'Unknown',
-                county_name: county?.name || 'Unknown',
-                full_address: settlement && municipality && county
-                  ? `${addressData.street_and_number}, ${settlement.name} ${settlement.settlement_type}, ${municipality.name}, ${county.name}`
-                  : addressData.street_and_number
-              }
-            }
-            return null
-          })
-        )
-
-        const validBuildings = buildingsWithAddresses.filter((building): building is Building => building !== null)
-        console.log('Manually constructed buildings:', validBuildings)
-        setBuildings(validBuildings)
+      if (!buildingsData || buildingsData.length === 0) {
+        log.debug('No buildings found for these addresses')
+        setBuildings([])
         return
       }
 
-      const transformedBuildings = (data || []).map((building: any) => {
-        const address = building.addresses
-        const settlement = address?.settlements
-        const municipality = settlement?.municipalities
-        const county = municipality?.counties
-
-        console.log('Transforming building:', { building, address, settlement })
-
-        return {
-          id: building.id,
-          name: building.name,
-          address_id: building.address,
-          street_and_number: address?.street_and_number || 'Unknown',
-          settlement_name: settlement?.name || 'Unknown',
-          settlement_type: settlement?.settlement_type || '',
-          municipality_name: municipality?.name || 'Unknown',
-          county_name: county?.name || 'Unknown',
-          full_address: settlement 
-            ? `${address.street_and_number}, ${settlement.name} ${settlement.settlement_type}, ${municipality.name}, ${county.name}`
-            : address?.street_and_number || 'Unknown Address'
-        }
-      })
-
-      console.log('Transformed buildings:', transformedBuildings)
-      setBuildings(transformedBuildings)
-    } catch (error) {
-      console.error('Error fetching buildings:', error)
-      let errorMessage = 'Unknown error'
-      
-      if (error instanceof Error) {
-        errorMessage = error.message
-      } else if (typeof error === 'object' && error !== null) {
-        errorMessage = JSON.stringify(error)
+      // Type the building data properly
+      type BuildingData = {
+        id: string
+        name: string
+        address: string
       }
+
+      // Enrich buildings with address and location data
+      const enrichedBuildings = await Promise.all(
+        (buildingsData as BuildingData[]).map(async (building) => {
+          const addressData = addresses.find(addr => addr.id === building.address)
+          
+          if (!addressData) {
+            return null
+          }
+
+          // Get location hierarchy
+          try {
+            const { data: settlement, error: settlementError } = await supabase
+              .from('settlements')
+              .select(`
+                name,
+                settlement_type,
+                municipalities (
+                  name,
+                  counties (
+                    name
+                  )
+                )
+              `)
+              .eq('id', settlementId)
+              .single()
+
+            if (settlementError) {
+              log.warn('Could not fetch settlement details:', settlementError)
+            }
+
+            const municipality = settlement?.municipalities?.[0]
+            const county = municipality?.counties?.[0]
+
+            return {
+              id: building.id,
+              name: building.name,
+              address_id: building.address,
+              street_and_number: addressData.street_and_number,
+              settlement_name: settlement?.name || 'Unknown',
+              settlement_type: settlement?.settlement_type || '',
+              municipality_name: municipality?.name || 'Unknown',
+              county_name: county?.name || 'Unknown',
+              full_address: settlement && municipality && county
+                ? `${addressData.street_and_number}, ${settlement.name} ${settlement.settlement_type}, ${municipality.name}, ${county.name}`
+                : addressData.street_and_number
+            }
+          } catch (locationError) {
+            log.warn('Error fetching location data:', locationError)
+            return {
+              id: building.id,
+              name: building.name,
+              address_id: building.address,
+              street_and_number: addressData.street_and_number,
+              settlement_name: 'Unknown',
+              settlement_type: '',
+              municipality_name: 'Unknown',
+              county_name: 'Unknown',
+              full_address: addressData.street_and_number
+            }
+          }
+        })
+      )
+
+      const validBuildings = enrichedBuildings.filter((building): building is Building => building !== null)
+      log.debug(`Successfully processed ${validBuildings.length} buildings`)
+      setBuildings(validBuildings)
       
-      console.error('Detailed error:', errorMessage)
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Failed to load buildings'
+      log.error('Error fetching buildings:', error)
+      setError(errorMessage)
       setBuildings([])
     } finally {
       setLoading(false)
@@ -230,6 +183,7 @@ export const BuildingSelector = ({
   const handleBuildingSelect = (building: Building) => {
     setValue('street_and_number', building.street_and_number)
     setShowManualInput(false)
+    log.debug('Building selected:', building.name)
   }
 
   if (!watchedSettlement) {
@@ -245,6 +199,30 @@ export const BuildingSelector = ({
           placeholder="Select settlement first"
         />
         <p className="mt-1 text-sm text-gray-500">Please select a settlement first to see available buildings</p>
+      </div>
+    )
+  }
+
+  if (error) {
+    return (
+      <div>
+        <label className="block text-sm font-medium text-gray-700">
+          Street and Building Number <span className="text-red-500">*</span>
+        </label>
+        <input
+          {...register('street_and_number', { 
+            required: 'Street and number is required',
+            minLength: { value: 2, message: 'Street and number must be at least 2 characters' }
+          })}
+          type="text"
+          className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+          placeholder="e.g., Sõpruse 10"
+          disabled={disabled}
+        />
+        <p className="mt-1 text-sm text-red-600">{error}</p>
+        {errors.street_and_number && (
+          <p className="mt-1 text-sm text-red-600">{errors.street_and_number.message}</p>
+        )}
       </div>
     )
   }
@@ -290,14 +268,10 @@ export const BuildingSelector = ({
                 <option value="manual">🖊️ Enter manually (not in list)</option>
               </select>
               
-              {/* Hidden input for form registration */}
               <input
                 {...register('street_and_number', { 
                   required: 'Street and number is required',
-                  minLength: {
-                    value: 2,
-                    message: 'Street and number must be at least 2 characters'
-                  }
+                  minLength: { value: 2, message: 'Street and number must be at least 2 characters' }
                 })}
                 type="hidden"
               />
@@ -311,10 +285,7 @@ export const BuildingSelector = ({
               <input
                 {...register('street_and_number', { 
                   required: 'Street and number is required',
-                  minLength: {
-                    value: 2,
-                    message: 'Street and number must be at least 2 characters'
-                  }
+                  minLength: { value: 2, message: 'Street and number must be at least 2 characters' }
                 })}
                 type="text"
                 className="block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
@@ -339,10 +310,7 @@ export const BuildingSelector = ({
           <input
             {...register('street_and_number', { 
               required: 'Street and number is required',
-              minLength: {
-                value: 2,
-                message: 'Street and number must be at least 2 characters'
-              }
+              minLength: { value: 2, message: 'Street and number must be at least 2 characters' }
             })}
             type="text"
             className="block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"

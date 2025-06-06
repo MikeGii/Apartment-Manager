@@ -1,8 +1,11 @@
-// src/hooks/useUserFlats.ts
+// src/hooks/useUserFlats.ts - Cleaned version with proper error handling
 "use client"
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { supabase } from '@/lib/supabase'
+import { createLogger } from '@/utils/logger'
+
+const log = createLogger('useUserFlats')
 
 export type UserFlat = {
   id: string
@@ -21,173 +24,156 @@ export type FlatRegistrationData = {
   unit_number: string
 }
 
+type FlatsCache = {
+  userId: string
+  data: UserFlat[]
+  timestamp: number
+}
+
 export const useUserFlats = (userId?: string) => {
   const [userFlats, setUserFlats] = useState<UserFlat[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  
+  // Prevent multiple simultaneous fetches and cache results
+  const fetchingRef = useRef(false)
+  const cacheRef = useRef<FlatsCache | null>(null)
+  const CACHE_DURATION = 30000 // 30 seconds
 
-  const fetchUserFlats = useCallback(async () => {
-    if (!userId) return
+  const fetchUserFlats = useCallback(async (forceRefresh = false) => {
+    if (!userId) {
+      log.debug('No userId provided, skipping fetch')
+      return
+    }
 
+    // Check cache first
+    const now = Date.now()
+    if (!forceRefresh && cacheRef.current && 
+        cacheRef.current.userId === userId &&
+        (now - cacheRef.current.timestamp) < CACHE_DURATION) {
+      log.debug('Using cached user flats data')
+      setUserFlats(cacheRef.current.data)
+      return
+    }
+
+    // Prevent multiple simultaneous fetches
+    if (fetchingRef.current) {
+      log.debug('Fetch already in progress, skipping')
+      return
+    }
+
+    fetchingRef.current = true
     setLoading(true)
     setError(null)
     
     try {
-      console.log('Fetching user flats for:', userId)
+      log.debug('Fetching user flats for:', userId)
 
-      // Get flats where the user is the tenant - simplified approach
+      // Get flats where the user is the tenant using optimized query
       const { data: flats, error: flatsError } = await supabase
         .from('flats')
-        .select('id, unit_number, building_id')
+        .select(`
+          id,
+          unit_number,
+          building_id,
+          buildings (
+            id,
+            name,
+            address,
+            addresses (
+              id,
+              street_and_number,
+              settlements (
+                name,
+                settlement_type,
+                municipalities (
+                  name,
+                  counties (
+                    name
+                  )
+                )
+              )
+            )
+          )
+        `)
         .eq('tenant_id', userId)
 
       if (flatsError) {
-        console.error('Error fetching user flats:', flatsError)
-        throw flatsError
+        log.error('Error fetching user flats:', flatsError)
+        throw new Error(`Failed to fetch your flats: ${flatsError.message}`)
       }
 
-      console.log('Raw flats data:', flats)
-
       if (!flats || flats.length === 0) {
-        console.log('No flats found for user')
-        setUserFlats([])
+        log.debug('No flats found for user')
+        const emptyResult: UserFlat[] = []
+        setUserFlats(emptyResult)
+        cacheRef.current = { userId, data: emptyResult, timestamp: now }
         return
       }
 
-      // Manually fetch building and address data for each flat
-      const enrichedFlats = await Promise.all(
-        flats.map(async (flat) => {
-          try {
-            // Get building data
-            const { data: building, error: buildingError } = await supabase
-              .from('buildings')
-              .select('id, name, address')
-              .eq('id', flat.building_id)
-              .single()
+      log.debug(`Processing ${flats.length} user flats`)
 
-            if (buildingError || !building) {
-              console.warn('Could not fetch building for flat:', flat.id)
-              return {
-                id: flat.id,
-                unit_number: flat.unit_number,
-                building_name: 'Unknown Building',
-                building_id: flat.building_id,
-                address_id: '',
-                address_full: 'Unknown Address'
-              }
-            }
+      // Transform the data with proper typing
+      const enrichedFlats: UserFlat[] = flats.map((flat: any) => {
+        const building = flat.buildings
+        const address = building?.addresses
+        const settlement = address?.settlements
+        const municipality = settlement?.municipalities
+        const county = municipality?.counties
 
-            // Get address data
-            const { data: address, error: addressError } = await supabase
-              .from('addresses')
-              .select('id, street_and_number, settlement_id')
-              .eq('id', building.address)
-              .single()
+        // Build full address
+        let fullAddress = address?.street_and_number || 'Unknown Address'
+        if (settlement && municipality && county) {
+          fullAddress = `${address.street_and_number}, ${settlement.name} ${settlement.settlement_type}, ${municipality.name}, ${county.name}`
+        }
 
-            if (addressError || !address) {
-              console.warn('Could not fetch address for building:', building.id)
-              return {
-                id: flat.id,
-                unit_number: flat.unit_number,
-                building_name: building.name,
-                building_id: flat.building_id,
-                address_id: building.address,
-                address_full: 'Unknown Address'
-              }
-            }
+        return {
+          id: flat.id,
+          unit_number: flat.unit_number,
+          building_name: building?.name || 'Unknown Building',
+          building_id: flat.building_id,
+          address_id: building?.address || '',
+          address_full: fullAddress
+        }
+      })
 
-            // Get settlement data
-            let fullAddress = address.street_and_number
-            try {
-              const { data: settlement, error: settlementError } = await supabase
-                .from('settlements')
-                .select(`
-                  name,
-                  settlement_type,
-                  municipality_id
-                `)
-                .eq('id', address.settlement_id)
-                .single()
-
-              if (!settlementError && settlement) {
-                // Get municipality data
-                const { data: municipality, error: municipalityError } = await supabase
-                  .from('municipalities')
-                  .select('name, county_id')
-                  .eq('id', settlement.municipality_id)
-                  .single()
-
-                if (!municipalityError && municipality) {
-                  // Get county data
-                  const { data: county, error: countyError } = await supabase
-                    .from('counties')
-                    .select('name')
-                    .eq('id', municipality.county_id)
-                    .single()
-
-                  if (!countyError && county) {
-                    fullAddress = `${address.street_and_number}, ${settlement.name} ${settlement.settlement_type}, ${municipality.name}, ${county.name}`
-                  }
-                }
-              }
-            } catch (locationError) {
-              console.warn('Could not fetch full location data:', locationError)
-            }
-
-            return {
-              id: flat.id,
-              unit_number: flat.unit_number,
-              building_name: building.name,
-              building_id: flat.building_id,
-              address_id: building.address,
-              address_full: fullAddress
-            }
-          } catch (flatError) {
-            console.error('Error processing flat:', flat.id, flatError)
-            return {
-              id: flat.id,
-              unit_number: flat.unit_number,
-              building_name: 'Error Loading',
-              building_id: flat.building_id,
-              address_id: '',
-              address_full: 'Error Loading'
-            }
-          }
-        })
-      )
-
-      console.log('Enriched user flats:', enrichedFlats)
+      log.debug(`Successfully processed ${enrichedFlats.length} user flats`)
       setUserFlats(enrichedFlats)
+      
+      // Cache the results
+      cacheRef.current = { userId, data: enrichedFlats, timestamp: now }
+      
     } catch (error) {
-      console.error('Error fetching user flats:', error)
-      let errorMessage = 'Failed to load your flats'
-      
-      if (error instanceof Error) {
-        errorMessage = error.message
-      }
-      
+      const errorMessage = error instanceof Error ? error.message : 'Failed to load your flats'
+      log.error('Error fetching user flats:', error)
       setError(errorMessage)
       setUserFlats([])
     } finally {
       setLoading(false)
+      fetchingRef.current = false
     }
   }, [userId])
 
   const registerFlat = async (data: FlatRegistrationData, userId: string) => {
     try {
-      console.log('Registering flat with data:', data)
+      log.debug('Registering flat:', data.unit_number)
 
-      // First, check if the address exists and is approved
+      // Validate input
+      if (!data.settlement_id || !data.street_and_number || !data.unit_number) {
+        throw new Error('Missing required registration data')
+      }
+
+      // Check if the address exists and is approved
       const { data: addressData, error: addressError } = await supabase
         .from('addresses')
         .select('id')
         .eq('settlement_id', data.settlement_id)
-        .eq('street_and_number', data.street_and_number)
+        .eq('street_and_number', data.street_and_number.trim())
         .eq('status', 'approved')
         .single()
 
       if (addressError || !addressData) {
-        console.error('Address not found or not approved:', addressError)
+        log.warn('Address not found or not approved:', addressError)
         return { 
           success: false, 
           message: 'Address not found or not approved. Please ensure the building address has been registered and approved by administration.' 
@@ -202,7 +188,7 @@ export const useUserFlats = (userId?: string) => {
         .single()
 
       if (buildingError || !buildingData) {
-        console.error('Building not found:', buildingError)
+        log.warn('Building not found:', buildingError)
         return { 
           success: false, 
           message: 'Building not found. Please contact building management to set up the building first.' 
@@ -214,11 +200,11 @@ export const useUserFlats = (userId?: string) => {
         .from('flats')
         .select('id, tenant_id')
         .eq('building_id', buildingData.id)
-        .eq('unit_number', data.unit_number)
+        .eq('unit_number', data.unit_number.trim())
         .single()
 
       if (flatError || !flatData) {
-        console.error('Flat not found:', flatError)
+        log.warn('Flat not found:', flatError)
         return { 
           success: false, 
           message: `Flat ${data.unit_number} not found in this building. Please contact building management to add this flat first.` 
@@ -257,26 +243,29 @@ export const useUserFlats = (userId?: string) => {
         })
 
       if (requestError) {
-        console.error('Error creating registration request:', requestError)
+        log.error('Error creating registration request:', requestError)
         throw requestError
       }
+
+      log.info('Registration request created successfully')
 
       return { 
         success: true, 
         message: 'Registration request submitted! Building manager will review it and you will be notified of the decision.' 
       }
     } catch (error) {
-      console.error('Error registering flat:', error)
+      const errorMessage = error instanceof Error ? error.message : 'Error submitting registration request. Please try again.'
+      log.error('Register flat failed:', errorMessage)
       return { 
         success: false, 
-        message: 'Error submitting registration request. Please try again.' 
+        message: errorMessage 
       }
     }
   }
 
   const unregisterFlat = async (flatId: string) => {
     try {
-      console.log('Unregistering from flat:', flatId)
+      log.debug('Unregistering from flat:', flatId)
 
       // Remove tenant from flat
       const { error } = await supabase
@@ -285,23 +274,28 @@ export const useUserFlats = (userId?: string) => {
         .eq('id', flatId)
 
       if (error) {
-        console.error('Error unregistering from flat:', error)
-        throw error
+        log.error('Error unregistering from flat:', error)
+        throw new Error(`Failed to unregister: ${error.message}`)
       }
 
-      // Refresh flats list
-      await fetchUserFlats()
+      log.info('Successfully unregistered from flat')
+      
+      // Clear cache and refresh flats list
+      cacheRef.current = null
+      await fetchUserFlats(true)
 
       return { 
         success: true, 
         message: 'Successfully unregistered from flat. The flat is now marked as vacant.' 
       }
     } catch (error) {
-      console.error('Error unregistering from flat:', error)
-      throw new Error('Error unregistering from flat. Please try again.')
+      const errorMessage = error instanceof Error ? error.message : 'Error unregistering from flat. Please try again.'
+      log.error('Unregister flat failed:', errorMessage)
+      throw new Error(errorMessage)
     }
   }
 
+  // Fetch when userId changes
   useEffect(() => {
     if (userId) {
       fetchUserFlats()
@@ -312,7 +306,7 @@ export const useUserFlats = (userId?: string) => {
     userFlats,
     loading,
     error,
-    fetchUserFlats,
+    fetchUserFlats: () => fetchUserFlats(true),
     registerFlat,
     unregisterFlat
   }

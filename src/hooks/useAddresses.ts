@@ -1,8 +1,11 @@
-// Fixed useAddresses.ts - Prevent multiple fetches and race conditions
+// src/hooks/useAddresses.ts - Cleaned version with proper logging
 "use client"
 
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { supabase } from '@/lib/supabase'
+import { createLogger } from '@/utils/logger'
+
+const log = createLogger('useAddresses')
 
 export type Address = {
   id: string
@@ -24,19 +27,19 @@ export const useAddresses = (userId?: string) => {
   const [approvedAddresses, setApprovedAddresses] = useState<Address[]>([])
   const [loading, setLoading] = useState(false)
   
-  // Use ref to prevent multiple simultaneous fetches
+  // Prevent multiple simultaneous fetches
   const fetchingRef = useRef(false)
   const lastUserIdRef = useRef<string | undefined>(undefined)
 
   const fetchAddresses = useCallback(async () => {
     if (!userId) {
-      console.log('useAddresses: No userId provided, skipping fetch')
+      log.debug('No userId provided, skipping fetch')
       return
     }
     
     // Prevent multiple simultaneous fetches for the same user
     if (fetchingRef.current && lastUserIdRef.current === userId) {
-      console.log('useAddresses: Fetch already in progress for this user, skipping...')
+      log.debug('Fetch already in progress for this user, skipping')
       return
     }
 
@@ -45,7 +48,7 @@ export const useAddresses = (userId?: string) => {
     setLoading(true)
     
     try {
-      console.log('useAddresses: Fetching addresses for user:', userId)
+      log.debug('Fetching addresses for user:', userId)
       
       const { data, error } = await supabase
         .from('addresses')
@@ -69,11 +72,9 @@ export const useAddresses = (userId?: string) => {
         .order('created_at', { ascending: false })
 
       if (error) {
-        console.error('Address fetch error details:', error)
+        log.error('Address fetch error:', error)
         throw error
       }
-
-      console.log('useAddresses: Raw addresses data:', data)
 
       // Transform the data to include full address
       const transformedData = (data || []).map((address: any) => {
@@ -96,15 +97,14 @@ export const useAddresses = (userId?: string) => {
       const pending = transformedData.filter(addr => addr.status === 'pending')
       const approved = transformedData.filter(addr => addr.status === 'approved')
       
-      console.log('useAddresses: Pending addresses:', pending.length)
-      console.log('useAddresses: Approved addresses:', approved.length)
+      log.debug(`Addresses fetched - Pending: ${pending.length}, Approved: ${approved.length}`)
       
       setPendingAddresses(pending)
       setApprovedAddresses(approved)
 
     } catch (error) {
-      console.error('Error fetching addresses:', error)
-      // Don't clear existing data on error, just log it
+      log.error('Error fetching addresses:', error)
+      // Don't clear existing data on error
     } finally {
       setLoading(false)
       fetchingRef.current = false
@@ -113,6 +113,8 @@ export const useAddresses = (userId?: string) => {
 
   const createAddress = async (data: AddressFormData, userId: string) => {
     try {
+      log.debug('Creating address:', data.street_and_number)
+      
       const { error } = await supabase
         .from('addresses')
         .insert({
@@ -122,22 +124,28 @@ export const useAddresses = (userId?: string) => {
           status: 'pending'
         })
 
-      if (error) throw error
+      if (error) {
+        log.error('Error creating address:', error)
+        throw error
+      }
 
+      log.info('Address created successfully')
+      
       // Refresh addresses after creation
       await fetchAddresses()
       
       return { success: true, message: 'Address submitted for approval! Admin will review it.' }
     } catch (error) {
-      console.error('Error creating address:', error)
-      return { success: false, message: 'Error creating address' }
+      const errorMessage = error instanceof Error ? error.message : 'Error creating address'
+      log.error('Create address failed:', errorMessage)
+      return { success: false, message: errorMessage }
     }
   }
 
   // Only fetch when userId changes and is valid
   useEffect(() => {
     if (userId && userId !== lastUserIdRef.current) {
-      console.log('useAddresses: UserId changed, fetching addresses...')
+      log.debug('UserId changed, fetching addresses')
       fetchAddresses()
     }
   }, [userId, fetchAddresses])

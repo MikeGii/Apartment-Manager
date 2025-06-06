@@ -1,8 +1,11 @@
-// src/hooks/useFlats.ts - Improved with proper error handling and schema consistency
+// src/hooks/useFlats.ts - Updated with correct column name and improved error handling
 "use client"
 
 import { useState, useCallback } from 'react'
 import { supabase } from '@/lib/supabase'
+import { createLogger } from '@/utils/logger'
+
+const log = createLogger('useFlats')
 
 export type Flat = {
   id: string
@@ -17,19 +20,8 @@ export type FlatFormData = {
   unit_number: string
 }
 
-// Define the correct column name for building-address relationship
-const BUILDING_ADDRESS_COLUMN = 'address' // Change this to 'address_id' if that's your actual column name
-
-const logger = {
-  debug: (message: string, data?: any) => {
-    if (process.env.NODE_ENV === 'development') {
-      console.log(`[useFlats] ${message}`, data || '')
-    }
-  },
-  error: (message: string, error?: any) => {
-    console.error(`[useFlats] ${message}`, error || '')
-  }
-}
+// Now that you've dropped address_id, we use 'address' consistently
+const BUILDING_ADDRESS_COLUMN = 'address'
 
 export const useFlats = () => {
   const [flats, setFlats] = useState<Flat[]>([])
@@ -37,13 +29,16 @@ export const useFlats = () => {
   const [error, setError] = useState<string | null>(null)
 
   const fetchFlatsForAddress = useCallback(async (addressId: string) => {
-    if (!addressId) return
+    if (!addressId) {
+      log.debug('No addressId provided, skipping fetch')
+      return
+    }
 
     setLoading(true)
     setError(null)
     
     try {
-      logger.debug('Fetching flats for address:', addressId)
+      log.debug('Fetching flats for address:', addressId)
       
       // Find the building for this address
       const { data: building, error: buildingError } = await supabase
@@ -54,12 +49,14 @@ export const useFlats = () => {
 
       if (buildingError) {
         if (buildingError.code === 'PGRST116') {
-          logger.debug('No building found for address, returning empty flats array')
+          log.debug('No building found for address, returning empty flats array')
           setFlats([])
           return
         }
         throw new Error(`Failed to find building: ${buildingError.message}`)
       }
+
+      log.debug('Building found:', building.id)
 
       // Fetch flats for this building with tenant information
       const { data, error } = await supabase
@@ -82,11 +79,11 @@ export const useFlats = () => {
         tenant_name: flat.tenant?.full_name || null
       })) || []
 
-      logger.debug('Flats fetched successfully:', flatsWithTenants.length)
+      log.debug(`Flats fetched successfully: ${flatsWithTenants.length} flats`)
       setFlats(flatsWithTenants)
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Failed to load flats'
-      logger.error('Error fetching flats:', error)
+      log.error('Error fetching flats:', error)
       setError(errorMessage)
       setFlats([])
     } finally {
@@ -100,14 +97,14 @@ export const useFlats = () => {
     managerId: string, 
     addressFullName: string
   ) => {
-    if (!addressId || !flatData.unit_number) {
+    if (!addressId || !flatData.unit_number?.trim()) {
       throw new Error('Missing required flat data')
     }
 
     setError(null)
     
     try {
-      logger.debug('Creating flat:', { addressId, unitNumber: flatData.unit_number })
+      log.debug('Creating flat:', { addressId, unitNumber: flatData.unit_number.trim() })
 
       // Check for existing building
       const { data: existingBuilding, error: buildingLookupError } = await supabase
@@ -120,7 +117,7 @@ export const useFlats = () => {
 
       if (buildingLookupError?.code === 'PGRST116') {
         // No building exists, create one
-        logger.debug('Creating new building for address')
+        log.debug('Creating new building for address')
         const { data: newBuilding, error: createBuildingError } = await supabase
           .from('buildings')
           .insert({
@@ -132,14 +129,18 @@ export const useFlats = () => {
           .single()
 
         if (createBuildingError) {
+          log.error('Error creating building:', createBuildingError)
           throw new Error(`Failed to create building: ${createBuildingError.message}`)
         }
         
         buildingId = newBuilding.id
+        log.debug('Building created successfully:', buildingId)
       } else if (buildingLookupError) {
+        log.error('Error checking for existing building:', buildingLookupError)
         throw new Error(`Error checking for existing building: ${buildingLookupError.message}`)
       } else {
         buildingId = existingBuilding.id
+        log.debug('Using existing building:', buildingId)
       }
 
       // Check for duplicate flat number in the same building
@@ -165,10 +166,11 @@ export const useFlats = () => {
         .single()
 
       if (flatError) {
+        log.error('Error creating flat:', flatError)
         throw new Error(`Failed to create flat: ${flatError.message}`)
       }
 
-      logger.debug('Flat created successfully:', newFlat.id)
+      log.info('Flat created successfully:', newFlat.id)
 
       // Refresh flats list
       await fetchFlatsForAddress(addressId)
@@ -176,7 +178,7 @@ export const useFlats = () => {
       return { success: true, message: 'Flat created successfully!' }
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Error creating flat'
-      logger.error('Error creating flat:', error)
+      log.error('Create flat failed:', errorMessage)
       setError(errorMessage)
       throw new Error(errorMessage)
     }
@@ -184,7 +186,22 @@ export const useFlats = () => {
 
   const deleteFlat = async (flatId: string, addressId: string) => {
     try {
-      logger.debug('Deleting flat:', flatId)
+      log.debug('Deleting flat:', flatId)
+      
+      // Check if flat has a tenant before deletion
+      const { data: flatToDelete, error: checkError } = await supabase
+        .from('flats')
+        .select('tenant_id, unit_number')
+        .eq('id', flatId)
+        .single()
+
+      if (checkError) {
+        throw new Error(`Failed to check flat status: ${checkError.message}`)
+      }
+
+      if (flatToDelete?.tenant_id) {
+        throw new Error(`Cannot delete flat ${flatToDelete.unit_number} - it is currently occupied`)
+      }
       
       const { error } = await supabase
         .from('flats')
@@ -195,20 +212,20 @@ export const useFlats = () => {
         throw new Error(`Failed to delete flat: ${error.message}`)
       }
 
-      logger.debug('Flat deleted successfully')
+      log.info('Flat deleted successfully')
       await fetchFlatsForAddress(addressId)
       
       return { success: true, message: 'Flat deleted successfully!' }
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Error deleting flat'
-      logger.error('Error deleting flat:', error)
+      log.error('Delete flat failed:', errorMessage)
       throw new Error(errorMessage)
     }
   }
 
   const removeTenant = async (flatId: string, addressId: string) => {
     try {
-      logger.debug('Removing tenant from flat:', flatId)
+      log.debug('Removing tenant from flat:', flatId)
       
       const { error } = await supabase
         .from('flats')
@@ -219,13 +236,13 @@ export const useFlats = () => {
         throw new Error(`Failed to remove tenant: ${error.message}`)
       }
 
-      logger.debug('Tenant removed successfully')
+      log.info('Tenant removed successfully')
       await fetchFlatsForAddress(addressId)
       
       return { success: true, message: 'Tenant removed successfully! Flat is now vacant.' }
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Error removing tenant'
-      logger.error('Error removing tenant:', error)
+      log.error('Remove tenant failed:', errorMessage)
       throw new Error(errorMessage)
     }
   }
