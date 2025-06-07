@@ -15,6 +15,7 @@ export default function FlatManagementPage() {
   const [searchQuery, setSearchQuery] = useState('')
   const [showAllBuildings, setShowAllBuildings] = useState(false)
   const [selectedBuildingId, setSelectedBuildingId] = useState<string | null>(null)
+  const [showPendingDetails, setShowPendingDetails] = useState(false)
 
   const { 
     buildings, 
@@ -146,51 +147,94 @@ export default function FlatManagementPage() {
           {/* Pending Registrations Section */}
           <div className="bg-white shadow rounded-lg mb-8">
             <div className="px-4 py-5 sm:p-6">
-              <div className="flex items-center justify-between mb-6">
+                <div className="flex items-center justify-between mb-6">
                 <div>
-                  <h3 className="text-lg leading-6 font-medium text-gray-900">
+                    <h3 className="text-lg leading-6 font-medium text-gray-900">
                     Pending Registration Requests ({pendingRequests.length})
-                  </h3>
-                  <p className="mt-1 text-sm text-gray-600">
+                    </h3>
+                    <p className="mt-1 text-sm text-gray-600">
                     Review and manage flat registration requests from tenants
-                  </p>
+                    </p>
                 </div>
-                {pendingRequests.length > 0 && (
-                  <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-orange-100 text-orange-800">
-                    Action Required
-                  </span>
-                )}
-              </div>
+                <div className="flex items-center space-x-3">
+                    {pendingRequests.length > 0 && (
+                    <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-orange-100 text-orange-800">
+                        Action Required
+                    </span>
+                    )}
+                    {pendingRequests.length > 0 && (
+                    <button
+                        onClick={() => setShowPendingDetails(!showPendingDetails)}
+                        className="bg-orange-600 hover:bg-orange-700 text-white px-4 py-2 rounded-md text-sm font-medium transition-colors flex items-center space-x-2"
+                    >
+                        <span>{showPendingDetails ? 'Hide Requests' : 'Show Requests'}</span>
+                        <svg 
+                        className={`w-4 h-4 transform transition-transform ${showPendingDetails ? 'rotate-180' : ''}`} 
+                        fill="none" 
+                        viewBox="0 0 24 24" 
+                        stroke="currentColor"
+                        >
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                        </svg>
+                    </button>
+                    )}
+                </div>
+                </div>
 
-              {requestsLoading ? (
+                {requestsLoading ? (
                 <div className="text-center py-8">
-                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto"></div>
-                  <p className="mt-2 text-sm text-gray-600">Loading pending requests...</p>
+                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto"></div>
+                    <p className="mt-2 text-sm text-gray-600">Loading pending requests...</p>
                 </div>
-              ) : pendingRequests.length === 0 ? (
+                ) : pendingRequests.length === 0 ? (
                 <div className="text-center py-12 px-4 border-2 border-dashed border-gray-300 rounded-lg">
-                  <div className="text-gray-400 mb-4">
+                    <div className="text-gray-400 mb-4">
                     <svg className="mx-auto h-12 w-12" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                     </svg>
-                  </div>
-                  <h4 className="text-lg font-medium text-gray-900 mb-2">No pending requests</h4>
-                  <p className="text-gray-500 text-sm">
+                    </div>
+                    <h4 className="text-lg font-medium text-gray-900 mb-2">No pending requests</h4>
+                    <p className="text-gray-500 text-sm">
                     All registration requests have been processed.
-                  </p>
+                    </p>
                 </div>
-              ) : (
+                ) : !showPendingDetails ? (
+                /* COMPACT SUMMARY VIEW */
+                <div className="bg-orange-50 border border-orange-200 rounded-lg p-4">
+                    <div className="flex items-center justify-between">
+                    <div className="flex items-center space-x-3">
+                        <div className="bg-orange-100 rounded-lg p-2">
+                        <svg className="w-5 h-5 text-orange-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                        </svg>
+                        </div>
+                        <div>
+                        <h4 className="font-semibold text-gray-900">
+                            {pendingRequests.length} registration request{pendingRequests.length > 1 ? 's' : ''} awaiting your review
+                        </h4>
+                        <p className="text-sm text-gray-600">
+                            {pendingRequests.slice(0, 3).map(req => `Flat ${req.unit_number}`).join(', ')}
+                            {pendingRequests.length > 3 && ` and ${pendingRequests.length - 3} more`}
+                        </p>
+                        </div>
+                    </div>
+                    <div className="flex items-center space-x-3">
+                    </div>
+                    </div>
+                </div>
+                ) : (
+                /* DETAILED VIEW */
                 <div className="space-y-4">
-                  {pendingRequests.map((request) => (
+                    {pendingRequests.map((request) => (
                     <PendingRequestCard
-                      key={request.id}
-                      request={request}
-                      onApprove={handleApproveRequest}
-                      onReject={handleRejectRequest}
+                        key={request.id}
+                        request={request}
+                        onApprove={handleApproveRequest}
+                        onReject={handleRejectRequest}
                     />
-                  ))}
+                    ))}
                 </div>
-              )}
+                )}
             </div>
           </div>
 
