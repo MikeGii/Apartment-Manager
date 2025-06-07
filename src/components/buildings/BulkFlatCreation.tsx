@@ -1,4 +1,4 @@
-// Alternative BulkFlatCreation using useFlats hook instead of API
+// Fixed BulkFlatCreation.tsx - Allows any valid range starting from any number
 "use client"
 
 import { useState } from 'react'
@@ -8,7 +8,7 @@ import { useFlats } from '@/hooks/useFlats'
 interface BulkFlatCreationProps {
   buildingId: string
   buildingName: string
-  addressId: string // We'll need this for useFlats
+  addressId: string
   managerId: string
   onClose: () => void
   onSuccess: (flatsCreated: number) => void
@@ -86,7 +86,8 @@ export const BulkFlatCreation = ({
     try {
       switch (method) {
         case 'range':
-          if (startNumber && endNumber && startNumber <= endNumber) {
+          // FIXED: Allow any valid range, not just starting from 1
+          if (startNumber && endNumber && startNumber <= endNumber && startNumber > 0) {
             for (let i = startNumber; i <= endNumber; i++) {
               flatNumbers.push(`${prefix || ''}${i}${suffix || ''}`)
             }
@@ -206,7 +207,7 @@ export const BulkFlatCreation = ({
   const getMethodDescription = () => {
     switch (method) {
       case 'range':
-        return 'Create flats with sequential numbers (e.g., 1, 2, 3...)'
+        return 'Create flats with sequential numbers (e.g., 5, 6, 7... or 101, 102, 103...)'
       case 'list':
         return 'Enter a custom list of flat numbers, separated by commas or new lines'
       case 'pattern':
@@ -287,7 +288,7 @@ export const BulkFlatCreation = ({
             </label>
             <div className="space-y-3">
               {[
-                { value: 'range', label: 'Number Range', desc: 'Sequential numbers (1, 2, 3...)' },
+                { value: 'range', label: 'Number Range', desc: 'Sequential numbers starting from any number' },
                 { value: 'list', label: 'Custom List', desc: 'Enter specific flat numbers' },
                 { value: 'pattern', label: 'Floor Pattern', desc: 'Floor-based numbering (101, 102, 201...)' }
               ].map(option => (
@@ -317,7 +318,10 @@ export const BulkFlatCreation = ({
                   Start Number <span className="text-red-500">*</span>
                 </label>
                 <input
-                  {...register('startNumber', { required: 'Start number is required', min: 1 })}
+                  {...register('startNumber', { 
+                    required: 'Start number is required', 
+                    min: { value: 1, message: 'Start number must be at least 1' }
+                  })}
                   type="number"
                   min="1"
                   disabled={isSubmitting}
@@ -333,7 +337,11 @@ export const BulkFlatCreation = ({
                   End Number <span className="text-red-500">*</span>
                 </label>
                 <input
-                  {...register('endNumber', { required: 'End number is required', min: 1 })}
+                  {...register('endNumber', { 
+                    required: 'End number is required',
+                    min: { value: 1, message: 'End number must be at least 1' },
+                    validate: value => value >= startNumber || 'End number must be greater than or equal to start number'
+                  })}
                   type="number"
                   min="1"
                   disabled={isSubmitting}
