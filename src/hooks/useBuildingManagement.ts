@@ -1,4 +1,4 @@
-// src/hooks/useBuildingManagement.ts - Building Management hook
+// src/hooks/useBuildingManagement.ts - Enhanced with force refresh capability
 "use client"
 
 import { useState, useEffect, useCallback, useRef } from 'react'
@@ -61,7 +61,7 @@ export const useBuildingManagement = (managerId?: string) => {
       return
     }
 
-    // Check cache first
+    // Check cache first (unless force refresh)
     const now = Date.now()
     if (!forceRefresh && buildingCacheRef.current && 
         buildingCacheRef.current.managerId === managerId &&
@@ -175,9 +175,6 @@ export const useBuildingManagement = (managerId?: string) => {
               log.warn('Could not fetch address for building:', building.id)
             }
 
-            // TODO: Get linked accountant - for now, we'll leave it undefined
-            // This would require additional database structure for accountant-building relationships
-
             return {
               id: building.id,
               name: building.name,
@@ -228,7 +225,7 @@ export const useBuildingManagement = (managerId?: string) => {
       return []
     }
 
-    // Check cache first
+    // Check cache first (unless force refresh)
     const now = Date.now()
     const cachedFlats = flatsCacheRef.current.get(buildingId)
     if (!forceRefresh && cachedFlats && (now - cachedFlats.timestamp) < CACHE_DURATION) {
@@ -285,8 +282,14 @@ export const useBuildingManagement = (managerId?: string) => {
   }, [])
 
   const clearCache = useCallback(() => {
+    log.debug('Clearing all cache data')
     buildingCacheRef.current = null
     flatsCacheRef.current.clear()
+  }, [])
+
+  const clearBuildingFlatsCache = useCallback((buildingId: string) => {
+    log.debug('Clearing flats cache for building:', buildingId)
+    flatsCacheRef.current.delete(buildingId)
   }, [])
 
   // Fetch buildings when managerId changes
@@ -302,6 +305,7 @@ export const useBuildingManagement = (managerId?: string) => {
     error,
     fetchBuildings: () => fetchBuildings(true),
     fetchBuildingFlats,
-    clearCache
+    clearCache,
+    clearBuildingFlatsCache
   }
 }

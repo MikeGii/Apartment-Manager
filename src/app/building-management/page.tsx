@@ -24,7 +24,8 @@ export default function BuildingManagementPage() {
     loading: buildingsLoading, 
     error: buildingsError,
     fetchBuildingFlats,
-    fetchBuildings
+    fetchBuildings,
+    clearBuildingFlatsCache
   } = useBuildingManagement(profile?.id)
 
   // Access control
@@ -76,13 +77,25 @@ export default function BuildingManagementPage() {
   const handleBulkCreationSuccess = async (flatsCreated: number) => {
     setSuccessMessage(`Successfully created ${flatsCreated} flats!`)
     
-    // Refresh the buildings list and flats
+    // Clear cache for the current building to force fresh data
+    if (selectedBuildingId) {
+      clearBuildingFlatsCache(selectedBuildingId)
+    }
+    
+    // Force refresh the buildings list to update statistics (total, occupied, vacant counts)
     await fetchBuildings()
     
     // Refresh the current building's flats if one is selected
     if (selectedBuildingId) {
-      const updatedFlats = await fetchBuildingFlats(selectedBuildingId)
-      setBuildingFlats(updatedFlats)
+      try {
+        setLoadingFlats(true)
+        const updatedFlats = await fetchBuildingFlats(selectedBuildingId, true) // Force refresh
+        setBuildingFlats(updatedFlats)
+      } catch (error) {
+        console.error('Error refreshing flats:', error)
+      } finally {
+        setLoadingFlats(false)
+      }
     }
   }
 
