@@ -4,6 +4,7 @@
 import React, { useState, useEffect } from 'react'
 import { useForm } from 'react-hook-form'
 import { useFlats, FlatFormData } from '@/hooks/useFlats'
+import { FlatWithTenant } from '@/types'
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner'
 import { useToast } from '@/components/ui/Toast'
 
@@ -199,7 +200,7 @@ export const FlatManagement = ({ addressId, addressFullName, managerId }: FlatMa
 
 // Enhanced flat card component with tenant details visible to managers
 const FlatCard = ({ flat, onDelete, onRemoveTenant }: { 
-  flat: Flat; 
+  flat: FlatWithTenant; 
   onDelete: () => void;
   onRemoveTenant: () => void;
 }) => {

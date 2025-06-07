@@ -3,6 +3,7 @@
 
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
+import { useToast } from '@/components/ui/Toast'
 
 type PendingAddress = {
   id: string
@@ -24,6 +25,7 @@ export const AdminAddressApproval = ({ adminId, onAddressProcessed }: AdminAddre
   const [pendingAddresses, setPendingAddresses] = useState<PendingAddress[]>([])
   const [loading, setLoading] = useState(true)
   const [processingAddress, setProcessingAddress] = useState<string | null>(null)
+  const { success, error: showError } = useToast()
 
   useEffect(() => {
     fetchPendingAddresses()
@@ -82,6 +84,7 @@ export const AdminAddressApproval = ({ adminId, onAddressProcessed }: AdminAddre
       setPendingAddresses(transformedData)
     } catch (error) {
       console.error('Error fetching pending addresses:', error)
+      showError('Error', 'Failed to load pending addresses')
     } finally {
       setLoading(false)
     }
@@ -89,6 +92,7 @@ export const AdminAddressApproval = ({ adminId, onAddressProcessed }: AdminAddre
 
   const updateAddressStatus = async (addressId: string, newStatus: 'approved' | 'rejected') => {
     setProcessingAddress(addressId)
+    
     try {
       // Update the address status
       const { error: updateError } = await supabase
@@ -117,23 +121,32 @@ export const AdminAddressApproval = ({ adminId, onAddressProcessed }: AdminAddre
 
           if (buildingError) {
             console.error('Error creating building:', buildingError)
-            alert(`Address approved successfully, but there was an issue creating the building: ${buildingError.message}`)
+            showError(
+              'Partial Success', 
+              'Address approved but building creation failed. Please contact support.',
+              { duration: 0 } // Don't auto-dismiss
+            )
+          } else {
+            success(
+              'Success', 
+              'Address approved successfully! Building created and manager can now add flats.'
+            )
           }
         }
+      } else {
+        success('Success', 'Address rejected successfully!')
       }
 
       // Remove from pending list
       setPendingAddresses(prev => prev.filter(addr => addr.id !== addressId))
-      
-      const message = newStatus === 'approved' 
-        ? 'Address approved successfully! Building has been created and the manager can now add flats.'
-        : 'Address rejected successfully!'
-      
-      alert(message)
       onAddressProcessed()
+      
     } catch (error: any) {
       console.error('Error updating address status:', error)
-      alert(`Error updating address status: ${error.message || 'Unknown error'}`)
+      showError(
+        'Error', 
+        `Failed to update address status: ${error.message || 'Unknown error'}`
+      )
     } finally {
       setProcessingAddress(null)
     }

@@ -3,6 +3,7 @@
 
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
+import { useToast } from '@/components/ui/Toast'
 
 type Profile = {
   id: string
@@ -21,6 +22,7 @@ export const AdminUserManagement = ({ isAdmin }: AdminUserManagementProps) => {
   const [users, setUsers] = useState<Profile[]>([])
   const [loading, setLoading] = useState(true)
   const [processingUser, setProcessingUser] = useState<string | null>(null)
+  const { success, error: showError } = useToast()
 
   useEffect(() => {
     if (isAdmin) {
@@ -39,6 +41,7 @@ export const AdminUserManagement = ({ isAdmin }: AdminUserManagementProps) => {
       setUsers(data || [])
     } catch (error) {
       console.error('Error fetching users:', error)
+      showError('Error', 'Failed to load users')
     } finally {
       setLoading(false)
     }
@@ -46,6 +49,7 @@ export const AdminUserManagement = ({ isAdmin }: AdminUserManagementProps) => {
 
   const updateUserRole = async (userId: string, newRole: string, roleName: string) => {
     setProcessingUser(userId)
+    
     try {
       const { error } = await supabase
         .from('profiles')
@@ -61,10 +65,11 @@ export const AdminUserManagement = ({ isAdmin }: AdminUserManagementProps) => {
         user.id === userId ? { ...user, role: newRole } : user
       ))
 
-      alert(`User promoted to ${roleName} successfully!`)
+      success('Success', `User promoted to ${roleName} successfully!`)
+      
     } catch (error) {
       console.error(`Error promoting user to ${roleName}:`, error)
-      alert(`Error promoting user to ${roleName}`)
+      showError('Error', `Failed to promote user to ${roleName}`)
     } finally {
       setProcessingUser(null)
     }
