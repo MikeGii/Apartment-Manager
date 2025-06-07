@@ -1,9 +1,11 @@
-// src/hooks/useBuildingManagement.ts - Enhanced with force refresh capability
+// src/hooks/useBuildingManagement.ts - Fixed version with numerical sorting
 "use client"
 
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { supabase } from '@/lib/supabase'
 import { createLogger } from '@/utils/logger'
+import { sortUnitNumbers } from '@/utils/sorting'
+import { CACHE_DURATION, DATABASE_COLUMNS } from '@/utils/constants'
 
 const log = createLogger('useBuildingManagement')
 
@@ -53,7 +55,22 @@ export const useBuildingManagement = (managerId?: string) => {
   const buildingCacheRef = useRef<BuildingCache | null>(null)
   const flatsCacheRef = useRef<Map<string, FlatsCache>>(new Map())
   const fetchingRef = useRef(false)
-  const CACHE_DURATION = 60000 // 1 minute cache
+
+  const sortUnitNumbers = <T extends { unit_number: string }>(items: T[]): T[] => {
+  return items.sort((a, b) => {
+    const aNum = a.unit_number
+    const bNum = b.unit_number
+    
+    const aNumeric = parseInt(aNum.match(/^\d+/)?.[0] || '0')
+    const bNumeric = parseInt(bNum.match(/^\d+/)?.[0] || '0')
+    
+    if (aNumeric !== bNumeric) {
+      return aNumeric - bNumeric
+    }
+    
+    return aNum.localeCompare(bNum, undefined, { numeric: true, sensitivity: 'base' })
+  })
+  }
 
   const fetchBuildings = useCallback(async (forceRefresh = false) => {
     if (!managerId) {
@@ -65,7 +82,7 @@ export const useBuildingManagement = (managerId?: string) => {
     const now = Date.now()
     if (!forceRefresh && buildingCacheRef.current && 
         buildingCacheRef.current.managerId === managerId &&
-        (now - buildingCacheRef.current.timestamp) < CACHE_DURATION) {
+        (now - buildingCacheRef.current.timestamp) < CACHE_DURATION.MEDIUM) {
       log.debug('Using cached buildings data')
       setBuildings(buildingCacheRef.current.buildings)
       return
@@ -83,9 +100,9 @@ export const useBuildingManagement = (managerId?: string) => {
     try {
       log.debug('Fetching buildings for manager:', managerId)
       
-      // Get buildings managed by this manager - simple query first
+      // Get buildings managed by this manager
       const { data: buildingsData, error: buildingsError } = await supabase
-        .from('buildings')
+        .from(DATABASE_COLUMNS.BUILDINGS_TABLE)
         .select('id, name, address, manager_id')
         .eq('manager_id', managerId)
 
@@ -109,7 +126,7 @@ export const useBuildingManagement = (managerId?: string) => {
           try {
             // Get flat statistics for this building
             const { data: flats, error: flatsError } = await supabase
-              .from('flats')
+              .from(DATABASE_COLUMNS.FLATS_TABLE)
               .select('id, tenant_id')
               .eq('building_id', building.id)
 
@@ -123,13 +140,13 @@ export const useBuildingManagement = (managerId?: string) => {
               vacantFlats = totalFlats - occupiedFlats
             }
 
-            // Get address details manually
+            // Get address details
             let fullAddress = 'Unknown Address'
             let streetAndNumber = 'Unknown'
 
             try {
               const { data: addressData, error: addressError } = await supabase
-                .from('addresses')
+                .from(DATABASE_COLUMNS.ADDRESSES_TABLE)
                 .select('id, street_and_number, settlement_id')
                 .eq('id', building.address)
                 .single()
@@ -138,37 +155,29 @@ export const useBuildingManagement = (managerId?: string) => {
                 streetAndNumber = addressData.street_and_number
                 fullAddress = addressData.street_and_number
 
-                // Try to get settlement details
-                try {
-                  const { data: settlement, error: settlementError } = await supabase
-                    .from('settlements')
-                    .select('name, settlement_type, municipality_id')
-                    .eq('id', addressData.settlement_id)
-                    .single()
+                // Get full location details
+                const { data: locationData, error: locationError } = await supabase
+                  .from('settlements')
+                  .select(`
+                    name,
+                    settlement_type,
+                    municipalities (
+                      name,
+                      counties (
+                        name
+                      )
+                    )
+                  `)
+                  .eq('id', addressData.settlement_id)
+                  .single()
 
-                  if (!settlementError && settlement) {
-                    // Get municipality details
-                    const { data: municipality, error: municipalityError } = await supabase
-                      .from('municipalities')
-                      .select('name, county_id')
-                      .eq('id', settlement.municipality_id)
-                      .single()
-
-                    if (!municipalityError && municipality) {
-                      // Get county details
-                      const { data: county, error: countyError } = await supabase
-                        .from('counties')
-                        .select('name')
-                        .eq('id', municipality.county_id)
-                        .single()
-
-                      if (!countyError && county) {
-                        fullAddress = `${addressData.street_and_number}, ${settlement.name} ${settlement.settlement_type}, ${municipality.name}, ${county.name}`
-                      }
-                    }
+                if (!locationError && locationData) {
+                  const municipality = locationData.municipalities?.[0]
+                  const county = municipality?.counties?.[0]
+                  
+                  if (municipality && county) {
+                    fullAddress = `${addressData.street_and_number}, ${locationData.name} ${locationData.settlement_type}, ${municipality.name}, ${county.name}`
                   }
-                } catch (locationError) {
-                  log.warn('Could not fetch full location for building:', building.id)
                 }
               }
             } catch (addressError) {
@@ -228,7 +237,7 @@ export const useBuildingManagement = (managerId?: string) => {
     // Check cache first (unless force refresh)
     const now = Date.now()
     const cachedFlats = flatsCacheRef.current.get(buildingId)
-    if (!forceRefresh && cachedFlats && (now - cachedFlats.timestamp) < CACHE_DURATION) {
+    if (!forceRefresh && cachedFlats && (now - cachedFlats.timestamp) < CACHE_DURATION.MEDIUM) {
       log.debug('Using cached flats data for building:', buildingId)
       return cachedFlats.flats
     }
@@ -237,7 +246,7 @@ export const useBuildingManagement = (managerId?: string) => {
       log.debug('Fetching flats for building:', buildingId)
       
       const { data: flats, error: flatsError } = await supabase
-        .from('flats')
+        .from(DATABASE_COLUMNS.FLATS_TABLE)
         .select(`
           id,
           unit_number,
@@ -249,7 +258,6 @@ export const useBuildingManagement = (managerId?: string) => {
           )
         `)
         .eq('building_id', buildingId)
-        .order('unit_number', { ascending: true })
 
       if (flatsError) {
         throw new Error(`Failed to fetch flats: ${flatsError.message}`)
@@ -265,16 +273,19 @@ export const useBuildingManagement = (managerId?: string) => {
         tenant_phone: flat.profiles?.phone || undefined,
       }))
 
-      log.debug(`Fetched ${flatsWithTenants.length} flats for building ${buildingId}`)
+      // FIXED: Apply numerical sorting instead of SQL ordering
+      const sortedFlats = sortUnitNumbers(flatsWithTenants)
+
+      log.debug(`Fetched ${sortedFlats.length} flats for building ${buildingId}`)
       
       // Cache the results
       flatsCacheRef.current.set(buildingId, {
         buildingId,
-        flats: flatsWithTenants,
+        flats: sortedFlats,
         timestamp: now
       })
       
-      return flatsWithTenants
+      return sortedFlats
     } catch (error) {
       log.error('Error fetching building flats:', error)
       return []

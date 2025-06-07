@@ -1,32 +1,38 @@
-// src/hooks/useFlats.ts - Updated with correct column name and improved error handling
+// src/hooks/useFlats.ts - Simplified version with fixes
 "use client"
 
 import { useState, useCallback } from 'react'
 import { supabase } from '@/lib/supabase'
 import { createLogger } from '@/utils/logger'
+import { sortUnitNumbers } from '@/utils/sorting'
+import { FlatWithTenant, FlatFormData, ApiResponse } from '@/types'
+import { DATABASE_COLUMNS } from '@/utils/constants'
 
 const log = createLogger('useFlats')
 
-export type Flat = {
-  id: string
-  building_id: string
-  unit_number: string
-  tenant_id: string | null
-  tenant_email?: string
-  tenant_name?: string
-}
-
-export type FlatFormData = {
-  unit_number: string
-}
-
-// Now that you've dropped address_id, we use 'address' consistently
-const BUILDING_ADDRESS_COLUMN = 'address'
-
 export const useFlats = () => {
-  const [flats, setFlats] = useState<Flat[]>([])
+  const [flats, setFlats] = useState<FlatWithTenant[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+
+  const sortUnitNumbers = <T extends { unit_number: string }>(items: T[]): T[] => {
+  return items.sort((a, b) => {
+    const aNum = a.unit_number
+    const bNum = b.unit_number
+    
+    // Extract numeric part from the beginning
+    const aNumeric = parseInt(aNum.match(/^\d+/)?.[0] || '0')
+    const bNumeric = parseInt(bNum.match(/^\d+/)?.[0] || '0')
+    
+    // Sort by numeric part first
+    if (aNumeric !== bNumeric) {
+      return aNumeric - bNumeric
+    }
+    
+    // If same numeric part, sort alphabetically
+    return aNum.localeCompare(bNum, undefined, { numeric: true, sensitivity: 'base' })
+  })
+  } 
 
   const fetchFlatsForAddress = useCallback(async (addressId: string) => {
     if (!addressId) {
@@ -42,9 +48,9 @@ export const useFlats = () => {
       
       // Find the building for this address
       const { data: building, error: buildingError } = await supabase
-        .from('buildings')
+        .from(DATABASE_COLUMNS.BUILDINGS_TABLE)
         .select('id')
-        .eq(BUILDING_ADDRESS_COLUMN, addressId)
+        .eq(DATABASE_COLUMNS.BUILDING_ADDRESS, addressId)
         .single()
 
       if (buildingError) {
@@ -60,27 +66,30 @@ export const useFlats = () => {
 
       // Fetch flats for this building with tenant information
       const { data, error } = await supabase
-        .from('flats')
+        .from(DATABASE_COLUMNS.FLATS_TABLE)
         .select(`
           *,
-          tenant:profiles(email, full_name)
+          tenant:profiles(email, full_name, phone)
         `)
         .eq('building_id', building.id)
-        .order('unit_number', { ascending: true })
 
       if (error) {
         throw new Error(`Failed to fetch flats: ${error.message}`)
       }
       
-      // Transform the data to include tenant info
+      // Transform and sort the data
       const flatsWithTenants = data?.map(flat => ({
         ...flat,
         tenant_email: flat.tenant?.email || null,
         tenant_name: flat.tenant?.full_name || null
       })) || []
 
-      log.debug(`Flats fetched successfully: ${flatsWithTenants.length} flats`)
-      setFlats(flatsWithTenants)
+      // FIXED: Apply numerical sorting
+      const sortedFlats = sortUnitNumbers(flatsWithTenants)
+      setFlats(sortedFlats)
+
+      log.debug(`Flats fetched successfully: ${sortedFlats.length} flats`)
+      setFlats(sortedFlats)
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Failed to load flats'
       log.error('Error fetching flats:', error)
@@ -96,7 +105,7 @@ export const useFlats = () => {
     flatData: FlatFormData, 
     managerId: string, 
     addressFullName: string
-  ) => {
+  ): Promise<ApiResponse> => {
     if (!addressId || !flatData.unit_number?.trim()) {
       throw new Error('Missing required flat data')
     }
@@ -108,9 +117,9 @@ export const useFlats = () => {
 
       // Check for existing building
       const { data: existingBuilding, error: buildingLookupError } = await supabase
-        .from('buildings')
+        .from(DATABASE_COLUMNS.BUILDINGS_TABLE)
         .select('id')
-        .eq(BUILDING_ADDRESS_COLUMN, addressId)
+        .eq(DATABASE_COLUMNS.BUILDING_ADDRESS, addressId)
         .single()
 
       let buildingId = null
@@ -119,10 +128,10 @@ export const useFlats = () => {
         // No building exists, create one
         log.debug('Creating new building for address')
         const { data: newBuilding, error: createBuildingError } = await supabase
-          .from('buildings')
+          .from(DATABASE_COLUMNS.BUILDINGS_TABLE)
           .insert({
             name: `${addressFullName} Building`,
-            [BUILDING_ADDRESS_COLUMN]: addressId,
+            [DATABASE_COLUMNS.BUILDING_ADDRESS]: addressId,
             manager_id: managerId
           })
           .select('id')
@@ -145,7 +154,7 @@ export const useFlats = () => {
 
       // Check for duplicate flat number in the same building
       const { data: existingFlat } = await supabase
-        .from('flats')
+        .from(DATABASE_COLUMNS.FLATS_TABLE)
         .select('id')
         .eq('building_id', buildingId)
         .eq('unit_number', flatData.unit_number.trim())
@@ -157,7 +166,7 @@ export const useFlats = () => {
 
       // Create the flat
       const { data: newFlat, error: flatError } = await supabase
-        .from('flats')
+        .from(DATABASE_COLUMNS.FLATS_TABLE)
         .insert({
           building_id: buildingId,
           unit_number: flatData.unit_number.trim()
@@ -184,13 +193,13 @@ export const useFlats = () => {
     }
   }
 
-  const deleteFlat = async (flatId: string, addressId: string) => {
+  const deleteFlat = async (flatId: string, addressId: string): Promise<ApiResponse> => {
     try {
       log.debug('Deleting flat:', flatId)
       
       // Check if flat has a tenant before deletion
       const { data: flatToDelete, error: checkError } = await supabase
-        .from('flats')
+        .from(DATABASE_COLUMNS.FLATS_TABLE)
         .select('tenant_id, unit_number')
         .eq('id', flatId)
         .single()
@@ -204,7 +213,7 @@ export const useFlats = () => {
       }
       
       const { error } = await supabase
-        .from('flats')
+        .from(DATABASE_COLUMNS.FLATS_TABLE)
         .delete()
         .eq('id', flatId)
 
@@ -223,12 +232,12 @@ export const useFlats = () => {
     }
   }
 
-  const removeTenant = async (flatId: string, addressId: string) => {
+  const removeTenant = async (flatId: string, addressId: string): Promise<ApiResponse> => {
     try {
       log.debug('Removing tenant from flat:', flatId)
       
       const { error } = await supabase
-        .from('flats')
+        .from(DATABASE_COLUMNS.FLATS_TABLE)
         .update({ tenant_id: null })
         .eq('id', flatId)
 
@@ -257,3 +266,6 @@ export const useFlats = () => {
     removeTenant
   }
 }
+
+// Export types for use in components
+export type { FlatWithTenant, FlatFormData } from '@/types'
