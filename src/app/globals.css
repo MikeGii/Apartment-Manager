@@ -85,3 +85,36 @@ textarea:disabled {
 .text-green-800 {
   @apply font-medium;
 }
+
+@keyframes shrink {
+  from { width: 100%; }
+  to { width: 0%; }
+}
+
+/* Toast container z-index to ensure it's above everything */
+.toast-container {
+  z-index: 9999;
+}
+
+/* Smooth transitions for toast animations */
+.toast-enter {
+  transform: translateX(100%);
+  opacity: 0;
+}
+
+.toast-enter-active {
+  transform: translateX(0);
+  opacity: 1;
+  transition: transform 300ms ease-out, opacity 300ms ease-out;
+}
+
+.toast-exit {
+  transform: translateX(0);
+  opacity: 1;
+}
+
+.toast-exit-active {
+  transform: translateX(100%);
+  opacity: 0;
+  transition: transform 300ms ease-in, opacity 300ms ease-in;
+}

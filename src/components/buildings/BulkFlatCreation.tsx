@@ -1,9 +1,11 @@
-// Fixed BulkFlatCreation.tsx - Allows any valid range starting from any number
+// Updated BulkFlatCreation.tsx - Integrated with centralized configuration
 "use client"
 
 import { useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { useFlats } from '@/hooks/useFlats'
+import config, { featureFlags, validation } from '@/config'
+import { ERROR_MESSAGES, configHelpers } from '@/utils/constants'
 
 interface BulkFlatCreationProps {
   buildingId: string
@@ -86,26 +88,55 @@ export const BulkFlatCreation = ({
     try {
       switch (method) {
         case 'range':
-          // FIXED: Allow any valid range, not just starting from 1
           if (startNumber && endNumber && startNumber <= endNumber && startNumber > 0) {
+            const totalFlats = endNumber - startNumber + 1
+            
+            // Check against configuration limits
+            if (totalFlats > config.business.maxBulkFlats) {
+              alert(ERROR_MESSAGES.VALIDATION.TOO_MANY_FLATS)
+              return
+            }
+            
             for (let i = startNumber; i <= endNumber; i++) {
-              flatNumbers.push(`${prefix || ''}${i}${suffix || ''}`)
+              const flatNumber = `${prefix || ''}${i}${suffix || ''}`
+              
+              // Use centralized validation
+              if (validation.isValidFlatNumber(flatNumber)) {
+                flatNumbers.push(flatNumber)
+              }
             }
           }
           break
 
         case 'list':
           if (flatList) {
-            flatNumbers = flatList
+            const potentialFlats = flatList
               .split(/[,\n\r]+/)
               .map(flat => flat.trim())
               .filter(flat => flat.length > 0)
               .filter((flat, index, arr) => arr.indexOf(flat) === index) // Remove duplicates
+            
+            // Check against configuration limits
+            if (potentialFlats.length > config.business.maxBulkFlats) {
+              alert(ERROR_MESSAGES.VALIDATION.TOO_MANY_FLATS)
+              return
+            }
+            
+            // Validate each flat number
+            flatNumbers = potentialFlats.filter(flat => validation.isValidFlatNumber(flat))
           }
           break
 
         case 'pattern':
           if (floors && flatsPerFloor && unitPattern) {
+            const totalFlats = floors * flatsPerFloor
+            
+            // Check against configuration limits
+            if (totalFlats > config.business.maxBulkFlats) {
+              alert(ERROR_MESSAGES.VALIDATION.TOO_MANY_FLATS)
+              return
+            }
+            
             for (let floor = 1; floor <= floors; floor++) {
               for (let unit = 1; unit <= flatsPerFloor; unit++) {
                 try {
@@ -115,7 +146,11 @@ export const BulkFlatCreation = ({
                       return unit.toString().padStart(parseInt(digits), '0')
                     })
                     .replace(/\{unit\}/g, unit.toString())
-                  flatNumbers.push(flatNumber)
+                  
+                  // Use centralized validation
+                  if (validation.isValidFlatNumber(flatNumber)) {
+                    flatNumbers.push(flatNumber)
+                  }
                 } catch (error) {
                   // Invalid pattern, skip
                 }
@@ -194,6 +229,18 @@ export const BulkFlatCreation = ({
       return
     }
 
+    // Use configuration-aware limit checking
+    if (preview.length > config.business.maxBulkFlats) {
+      alert(ERROR_MESSAGES.VALIDATION.TOO_MANY_FLATS)
+      return
+    }
+
+    // Check if bulk operations are allowed
+    if (!configHelpers.canPerformBulkOperations()) {
+      alert(ERROR_MESSAGES.BUSINESS.BULK_DISABLED)
+      return
+    }
+
     if (preview.length > 50) {
       const confirmed = confirm(
         `You're about to create ${preview.length} flats. This might take a while. Continue?`
@@ -229,6 +276,9 @@ export const BulkFlatCreation = ({
             </h3>
             <p className="text-sm text-gray-600 mt-1">
               Building: {buildingName}
+            </p>
+            <p className="text-xs text-gray-500 mt-1">
+              Maximum {config.business.maxBulkFlats} flats per bulk operation
             </p>
           </div>
           <button
@@ -320,10 +370,15 @@ export const BulkFlatCreation = ({
                 <input
                   {...register('startNumber', { 
                     required: 'Start number is required', 
-                    min: { value: 1, message: 'Start number must be at least 1' }
+                    min: { value: 1, message: 'Start number must be at least 1' },
+                    max: { 
+                      value: config.business.maxFlatsPerBuilding, 
+                      message: `Cannot exceed ${config.business.maxFlatsPerBuilding} flats per building` 
+                    }
                   })}
                   type="number"
                   min="1"
+                  max={config.business.maxFlatsPerBuilding}
                   disabled={isSubmitting}
                   className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100"
                 />
@@ -340,10 +395,15 @@ export const BulkFlatCreation = ({
                   {...register('endNumber', { 
                     required: 'End number is required',
                     min: { value: 1, message: 'End number must be at least 1' },
+                    max: { 
+                      value: config.business.maxFlatsPerBuilding, 
+                      message: `Cannot exceed ${config.business.maxFlatsPerBuilding} flats per building` 
+                    },
                     validate: value => value >= startNumber || 'End number must be greater than or equal to start number'
                   })}
                   type="number"
                   min="1"
+                  max={config.business.maxFlatsPerBuilding}
                   disabled={isSubmitting}
                   className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100"
                 />
@@ -398,6 +458,7 @@ export const BulkFlatCreation = ({
               )}
               <p className="mt-2 text-sm text-gray-600">
                 Separate flat numbers with commas or put each on a new line. Duplicates will be removed automatically.
+                Max {config.business.maxFlatNumberLength} characters per flat number.
               </p>
             </div>
           )}
@@ -411,7 +472,11 @@ export const BulkFlatCreation = ({
                     Number of Floors <span className="text-red-500">*</span>
                   </label>
                   <input
-                    {...register('floors', { required: 'Number of floors is required', min: 1 })}
+                    {...register('floors', { 
+                      required: 'Number of floors is required', 
+                      min: 1,
+                      max: 50
+                    })}
                     type="number"
                     min="1"
                     max="50"
@@ -425,7 +490,11 @@ export const BulkFlatCreation = ({
                     Flats per Floor <span className="text-red-500">*</span>
                   </label>
                   <input
-                    {...register('flatsPerFloor', { required: 'Flats per floor is required', min: 1 })}
+                    {...register('flatsPerFloor', { 
+                      required: 'Flats per floor is required', 
+                      min: 1,
+                      max: 20
+                    })}
                     type="number"
                     min="1"
                     max="20"
@@ -490,6 +559,11 @@ export const BulkFlatCreation = ({
             <div className="border-t border-gray-200 pt-6">
               <h4 className="text-md font-medium text-gray-900 mb-4">
                 Preview ({preview.length} flats)
+                {preview.length > config.business.maxBulkFlats && (
+                  <span className="ml-2 text-sm text-red-600 font-normal">
+                    - Exceeds limit of {config.business.maxBulkFlats}
+                  </span>
+                )}
               </h4>
               
               {preview.length > 0 ? (
@@ -524,7 +598,7 @@ export const BulkFlatCreation = ({
           <div className="flex space-x-3 pt-6 border-t border-gray-200">
             <button
               type="submit"
-              disabled={isSubmitting || preview.length === 0}
+              disabled={isSubmitting || preview.length === 0 || preview.length > config.business.maxBulkFlats}
               className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-md text-sm font-medium disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors flex items-center space-x-2"
             >
               {isSubmitting ? (

@@ -1,4 +1,4 @@
-// src/hooks/useFlats.ts - Simplified version with fixes
+// src/hooks/useFlats.ts - Enhanced with Error Handling System
 "use client"
 
 import { useState, useCallback } from 'react'
@@ -7,6 +7,18 @@ import { createLogger } from '@/utils/logger'
 import { sortUnitNumbers } from '@/utils/sorting'
 import { FlatWithTenant, FlatFormData, ApiResponse } from '@/types'
 import { DATABASE_COLUMNS } from '@/utils/constants'
+import { 
+  errorHandler, 
+  withRetry, 
+  throwValidationError, 
+  throwNotFoundError,
+  throwConflictError,
+  ValidationError,
+  NotFoundError,
+  ConflictError,
+  AppError
+} from '@/utils/errors'
+import { useToast } from '@/components/ui/Toast'
 
 const log = createLogger('useFlats')
 
@@ -14,25 +26,48 @@ export const useFlats = () => {
   const [flats, setFlats] = useState<FlatWithTenant[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  
+  // Toast notifications
+  const { success, error: showError, warning } = useToast()
 
-  const sortUnitNumbers = <T extends { unit_number: string }>(items: T[]): T[] => {
-  return items.sort((a, b) => {
-    const aNum = a.unit_number
-    const bNum = b.unit_number
-    
-    // Extract numeric part from the beginning
-    const aNumeric = parseInt(aNum.match(/^\d+/)?.[0] || '0')
-    const bNumeric = parseInt(bNum.match(/^\d+/)?.[0] || '0')
-    
-    // Sort by numeric part first
-    if (aNumeric !== bNumeric) {
-      return aNumeric - bNumeric
+  // Enhanced error handling wrapper
+  const handleOperation = async <T>(
+    operation: () => Promise<T>,
+    operationName: string,
+    showToast: boolean = true
+  ): Promise<{ data?: T; error?: AppError }> => {
+    try {
+      setError(null)
+      const data = await operation()
+      return { data }
+    } catch (error) {
+      const appError = errorHandler.handleError(error, operationName)
+      errorHandler.reportError(appError)
+      
+      // Set local error state
+      setError(appError.message)
+      
+      // Show toast notification
+      if (showToast) {
+        if (appError.statusCode >= 500) {
+          showError(
+            'System Error',
+            'Something went wrong on our end. Please try again.',
+            {
+              action: {
+                label: 'Report Issue',
+                onClick: () => window.open('mailto:support@yourapp.com', '_blank')
+              }
+            }
+          )
+        } else {
+          showError('Error', appError.message)
+        }
+      }
+      
+      return { error: appError }
     }
-    
-    // If same numeric part, sort alphabetically
-    return aNum.localeCompare(bNum, undefined, { numeric: true, sensitivity: 'base' })
-  })
-  } 
+  }
 
   const fetchFlatsForAddress = useCallback(async (addressId: string) => {
     if (!addressId) {
@@ -41,64 +76,62 @@ export const useFlats = () => {
     }
 
     setLoading(true)
-    setError(null)
     
-    try {
-      log.debug('Fetching flats for address:', addressId)
-      
-      // Find the building for this address
-      const { data: building, error: buildingError } = await supabase
-        .from(DATABASE_COLUMNS.BUILDINGS_TABLE)
-        .select('id')
-        .eq(DATABASE_COLUMNS.BUILDING_ADDRESS, addressId)
-        .single()
+    const { data, error } = await handleOperation(async () => {
+      return await withRetry(async () => {
+        log.debug('Fetching flats for address:', addressId)
+        
+        // Find the building for this address
+        const { data: building, error: buildingError } = await supabase
+          .from(DATABASE_COLUMNS.BUILDINGS_TABLE)
+          .select('id')
+          .eq(DATABASE_COLUMNS.BUILDING_ADDRESS, addressId)
+          .single()
 
-      if (buildingError) {
-        if (buildingError.code === 'PGRST116') {
-          log.debug('No building found for address, returning empty flats array')
-          setFlats([])
-          return
+        if (buildingError) {
+          if (buildingError.code === 'PGRST116') {
+            log.debug('No building found for address, returning empty flats array')
+            return []
+          }
+          throw errorHandler.parseSupabaseError(buildingError)
         }
-        throw new Error(`Failed to find building: ${buildingError.message}`)
-      }
 
-      log.debug('Building found:', building.id)
+        log.debug('Building found:', building.id)
 
-      // Fetch flats for this building with tenant information
-      const { data, error } = await supabase
-        .from(DATABASE_COLUMNS.FLATS_TABLE)
-        .select(`
-          *,
-          tenant:profiles(email, full_name, phone)
-        `)
-        .eq('building_id', building.id)
+        // Fetch flats for this building with tenant information
+        const { data: flatsData, error: flatsError } = await supabase
+          .from(DATABASE_COLUMNS.FLATS_TABLE)
+          .select(`
+            *,
+            tenant:profiles(email, full_name, phone)
+          `)
+          .eq('building_id', building.id)
 
-      if (error) {
-        throw new Error(`Failed to fetch flats: ${error.message}`)
-      }
-      
-      // Transform and sort the data
-      const flatsWithTenants = data?.map(flat => ({
-        ...flat,
-        tenant_email: flat.tenant?.email || null,
-        tenant_name: flat.tenant?.full_name || null
-      })) || []
+        if (flatsError) {
+          throw errorHandler.parseSupabaseError(flatsError)
+        }
+        
+        // Transform and sort the data
+        const flatsWithTenants = flatsData?.map(flat => ({
+          ...flat,
+          tenant_email: flat.tenant?.email || null,
+          tenant_name: flat.tenant?.full_name || null
+        })) || []
 
-      // FIXED: Apply numerical sorting
-      const sortedFlats = sortUnitNumbers(flatsWithTenants)
-      setFlats(sortedFlats)
+        // Apply numerical sorting
+        const sortedFlats = sortUnitNumbers(flatsWithTenants)
+        
+        log.debug(`Flats fetched successfully: ${sortedFlats.length} flats`)
+        return sortedFlats
+      })
+    }, 'fetchFlatsForAddress', false) // Don't show toast for fetch operations
 
-      log.debug(`Flats fetched successfully: ${sortedFlats.length} flats`)
-      setFlats(sortedFlats)
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Failed to load flats'
-      log.error('Error fetching flats:', error)
-      setError(errorMessage)
-      setFlats([])
-    } finally {
-      setLoading(false)
+    if (data) {
+      setFlats(data)
     }
-  }, [])
+    
+    setLoading(false)
+  }, [handleOperation])
 
   const createFlat = async (
     addressId: string, 
@@ -106,153 +139,302 @@ export const useFlats = () => {
     managerId: string, 
     addressFullName: string
   ): Promise<ApiResponse> => {
-    if (!addressId || !flatData.unit_number?.trim()) {
-      throw new Error('Missing required flat data')
+    // Input validation
+    if (!addressId?.trim()) {
+      throwValidationError('Address ID')
+    }
+    if (!flatData.unit_number?.trim()) {
+      throwValidationError('Flat number')
+    }
+    if (!managerId?.trim()) {
+      throwValidationError('Manager ID')
     }
 
-    setError(null)
-    
-    try {
-      log.debug('Creating flat:', { addressId, unitNumber: flatData.unit_number.trim() })
+    const { data, error } = await handleOperation(async () => {
+      return await withRetry(async () => {
+        log.debug('Creating flat:', { addressId, unitNumber: flatData.unit_number.trim() })
 
-      // Check for existing building
-      const { data: existingBuilding, error: buildingLookupError } = await supabase
-        .from(DATABASE_COLUMNS.BUILDINGS_TABLE)
-        .select('id')
-        .eq(DATABASE_COLUMNS.BUILDING_ADDRESS, addressId)
-        .single()
-
-      let buildingId = null
-
-      if (buildingLookupError?.code === 'PGRST116') {
-        // No building exists, create one
-        log.debug('Creating new building for address')
-        const { data: newBuilding, error: createBuildingError } = await supabase
+        // Check for existing building
+        const { data: existingBuilding, error: buildingLookupError } = await supabase
           .from(DATABASE_COLUMNS.BUILDINGS_TABLE)
-          .insert({
-            name: `${addressFullName} Building`,
-            [DATABASE_COLUMNS.BUILDING_ADDRESS]: addressId,
-            manager_id: managerId
-          })
           .select('id')
+          .eq(DATABASE_COLUMNS.BUILDING_ADDRESS, addressId)
           .single()
 
-        if (createBuildingError) {
-          log.error('Error creating building:', createBuildingError)
-          throw new Error(`Failed to create building: ${createBuildingError.message}`)
+        let buildingId = null
+
+        if (buildingLookupError?.code === 'PGRST116') {
+          // No building exists, create one
+          log.debug('Creating new building for address')
+          const { data: newBuilding, error: createBuildingError } = await supabase
+            .from(DATABASE_COLUMNS.BUILDINGS_TABLE)
+            .insert({
+              name: `${addressFullName} Building`,
+              [DATABASE_COLUMNS.BUILDING_ADDRESS]: addressId,
+              manager_id: managerId
+            })
+            .select('id')
+            .single()
+
+          if (createBuildingError) {
+            throw errorHandler.parseSupabaseError(createBuildingError)
+          }
+          
+          buildingId = newBuilding.id
+          log.debug('Building created successfully:', buildingId)
+        } else if (buildingLookupError) {
+          throw errorHandler.parseSupabaseError(buildingLookupError)
+        } else {
+          buildingId = existingBuilding.id
+          log.debug('Using existing building:', buildingId)
         }
+
+        // Check for duplicate flat number in the same building
+        const { data: existingFlat } = await supabase
+          .from(DATABASE_COLUMNS.FLATS_TABLE)
+          .select('id')
+          .eq('building_id', buildingId)
+          .eq('unit_number', flatData.unit_number.trim())
+          .single()
+
+        if (existingFlat) {
+          throwConflictError(
+            `Flat number "${flatData.unit_number}" already exists in this building`,
+            'unit_number'
+          )
+        }
+
+        // Create the flat
+        const { data: newFlat, error: flatError } = await supabase
+          .from(DATABASE_COLUMNS.FLATS_TABLE)
+          .insert({
+            building_id: buildingId,
+            unit_number: flatData.unit_number.trim()
+          })
+          .select()
+          .single()
+
+        if (flatError) {
+          throw errorHandler.parseSupabaseError(flatError)
+        }
+
+        log.info('Flat created successfully:', newFlat.id)
+
+        // Refresh flats list
+        await fetchFlatsForAddress(addressId)
         
-        buildingId = newBuilding.id
-        log.debug('Building created successfully:', buildingId)
-      } else if (buildingLookupError) {
-        log.error('Error checking for existing building:', buildingLookupError)
-        throw new Error(`Error checking for existing building: ${buildingLookupError.message}`)
-      } else {
-        buildingId = existingBuilding.id
-        log.debug('Using existing building:', buildingId)
+        return { success: true, message: 'Flat created successfully!' }
+      })
+    }, 'createFlat')
+
+    if (data) {
+      success('Success', 'Flat created successfully!')
+      return data
+    } else {
+      return { 
+        success: false, 
+        message: error?.message || 'Failed to create flat' 
       }
-
-      // Check for duplicate flat number in the same building
-      const { data: existingFlat } = await supabase
-        .from(DATABASE_COLUMNS.FLATS_TABLE)
-        .select('id')
-        .eq('building_id', buildingId)
-        .eq('unit_number', flatData.unit_number.trim())
-        .single()
-
-      if (existingFlat) {
-        throw new Error(`Flat number "${flatData.unit_number}" already exists in this building`)
-      }
-
-      // Create the flat
-      const { data: newFlat, error: flatError } = await supabase
-        .from(DATABASE_COLUMNS.FLATS_TABLE)
-        .insert({
-          building_id: buildingId,
-          unit_number: flatData.unit_number.trim()
-        })
-        .select()
-        .single()
-
-      if (flatError) {
-        log.error('Error creating flat:', flatError)
-        throw new Error(`Failed to create flat: ${flatError.message}`)
-      }
-
-      log.info('Flat created successfully:', newFlat.id)
-
-      // Refresh flats list
-      await fetchFlatsForAddress(addressId)
-      
-      return { success: true, message: 'Flat created successfully!' }
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Error creating flat'
-      log.error('Create flat failed:', errorMessage)
-      setError(errorMessage)
-      throw new Error(errorMessage)
     }
   }
 
   const deleteFlat = async (flatId: string, addressId: string): Promise<ApiResponse> => {
-    try {
-      log.debug('Deleting flat:', flatId)
-      
-      // Check if flat has a tenant before deletion
-      const { data: flatToDelete, error: checkError } = await supabase
-        .from(DATABASE_COLUMNS.FLATS_TABLE)
-        .select('tenant_id, unit_number')
-        .eq('id', flatId)
-        .single()
+    if (!flatId?.trim()) {
+      throwValidationError('Flat ID')
+    }
+    if (!addressId?.trim()) {
+      throwValidationError('Address ID')
+    }
 
-      if (checkError) {
-        throw new Error(`Failed to check flat status: ${checkError.message}`)
+    const { data, error } = await handleOperation(async () => {
+      return await withRetry(async () => {
+        log.debug('Deleting flat:', flatId)
+        
+        // Check if flat has a tenant before deletion
+        const { data: flatToDelete, error: checkError } = await supabase
+          .from(DATABASE_COLUMNS.FLATS_TABLE)
+          .select('tenant_id, unit_number')
+          .eq('id', flatId)
+          .single()
+
+        if (checkError) {
+          if (checkError.code === 'PGRST116') {
+            throwNotFoundError('Flat')
+          }
+          throw errorHandler.parseSupabaseError(checkError)
+        }
+
+        if (flatToDelete?.tenant_id) {
+          throwConflictError(
+            `Cannot delete flat ${flatToDelete.unit_number} - it is currently occupied`,
+            'tenant_occupied'
+          )
+        }
+        
+        const { error: deleteError } = await supabase
+          .from(DATABASE_COLUMNS.FLATS_TABLE)
+          .delete()
+          .eq('id', flatId)
+
+        if (deleteError) {
+          throw errorHandler.parseSupabaseError(deleteError)
+        }
+
+        log.info('Flat deleted successfully')
+        await fetchFlatsForAddress(addressId)
+        
+        return { success: true, message: 'Flat deleted successfully!' }
+      })
+    }, 'deleteFlat')
+
+    if (data) {
+      success('Success', 'Flat deleted successfully!')
+      return data
+    } else {
+      return { 
+        success: false, 
+        message: error?.message || 'Failed to delete flat' 
       }
-
-      if (flatToDelete?.tenant_id) {
-        throw new Error(`Cannot delete flat ${flatToDelete.unit_number} - it is currently occupied`)
-      }
-      
-      const { error } = await supabase
-        .from(DATABASE_COLUMNS.FLATS_TABLE)
-        .delete()
-        .eq('id', flatId)
-
-      if (error) {
-        throw new Error(`Failed to delete flat: ${error.message}`)
-      }
-
-      log.info('Flat deleted successfully')
-      await fetchFlatsForAddress(addressId)
-      
-      return { success: true, message: 'Flat deleted successfully!' }
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Error deleting flat'
-      log.error('Delete flat failed:', errorMessage)
-      throw new Error(errorMessage)
     }
   }
 
   const removeTenant = async (flatId: string, addressId: string): Promise<ApiResponse> => {
-    try {
-      log.debug('Removing tenant from flat:', flatId)
-      
-      const { error } = await supabase
-        .from(DATABASE_COLUMNS.FLATS_TABLE)
-        .update({ tenant_id: null })
-        .eq('id', flatId)
+    if (!flatId?.trim()) {
+      throwValidationError('Flat ID')
+    }
+    if (!addressId?.trim()) {
+      throwValidationError('Address ID')
+    }
 
-      if (error) {
-        throw new Error(`Failed to remove tenant: ${error.message}`)
+    const { data, error } = await handleOperation(async () => {
+      return await withRetry(async () => {
+        log.debug('Removing tenant from flat:', flatId)
+        
+        // Verify flat exists first
+        const { data: existingFlat, error: checkError } = await supabase
+          .from(DATABASE_COLUMNS.FLATS_TABLE)
+          .select('id, tenant_id, unit_number')
+          .eq('id', flatId)
+          .single()
+
+        if (checkError) {
+          if (checkError.code === 'PGRST116') {
+            throwNotFoundError('Flat')
+          }
+          throw errorHandler.parseSupabaseError(checkError)
+        }
+
+        if (!existingFlat.tenant_id) {
+          warning('Notice', 'This flat is already vacant')
+          return { success: true, message: 'Flat is already vacant' }
+        }
+        
+        const { error: updateError } = await supabase
+          .from(DATABASE_COLUMNS.FLATS_TABLE)
+          .update({ tenant_id: null })
+          .eq('id', flatId)
+
+        if (updateError) {
+          throw errorHandler.parseSupabaseError(updateError)
+        }
+
+        log.info('Tenant removed successfully')
+        await fetchFlatsForAddress(addressId)
+        
+        return { success: true, message: 'Tenant removed successfully! Flat is now vacant.' }
+      })
+    }, 'removeTenant')
+
+    if (data) {
+      success('Success', 'Tenant removed successfully!')
+      return data
+    } else {
+      return { 
+        success: false, 
+        message: error?.message || 'Failed to remove tenant' 
+      }
+    }
+  }
+
+  // Bulk operations with enhanced error handling
+  const createBulkFlats = async (
+    addressId: string,
+    flatNumbers: string[],
+    managerId: string,
+    addressFullName: string,
+    onProgress?: (current: number, total: number, created: number, errors: string[]) => void
+  ): Promise<{ totalCreated: number; errors: string[]; success: boolean }> => {
+    if (!flatNumbers.length) {
+      throwValidationError('Flat numbers list')
+    }
+
+    const { data, error } = await handleOperation(async () => {
+      const errors: string[] = []
+      let totalCreated = 0
+
+      // Process in smaller batches to avoid overwhelming the database
+      const batchSize = 5
+      for (let i = 0; i < flatNumbers.length; i += batchSize) {
+        const batch = flatNumbers.slice(i, i + batchSize)
+        
+        // Process batch in parallel with individual error handling
+        const batchResults = await Promise.allSettled(
+          batch.map(async (unitNumber, batchIndex) => {
+            const globalIndex = i + batchIndex
+            
+            try {
+              const result = await createFlat(addressId, { unit_number: unitNumber }, managerId, addressFullName)
+              
+              if (result.success) {
+                totalCreated++
+              } else {
+                errors.push(`Flat ${unitNumber}: ${result.message}`)
+              }
+              
+              // Report progress
+              onProgress?.(globalIndex + 1, flatNumbers.length, totalCreated, errors)
+              
+              return result
+            } catch (error) {
+              const appError = errorHandler.handleError(error, 'createBulkFlats')
+              errors.push(`Flat ${unitNumber}: ${appError.message}`)
+              onProgress?.(globalIndex + 1, flatNumbers.length, totalCreated, errors)
+              throw appError
+            }
+          })
+        )
+
+        // Small delay between batches
+        if (i + batchSize < flatNumbers.length) {
+          await new Promise(resolve => setTimeout(resolve, 200))
+        }
       }
 
-      log.info('Tenant removed successfully')
-      await fetchFlatsForAddress(addressId)
-      
-      return { success: true, message: 'Tenant removed successfully! Flat is now vacant.' }
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Error removing tenant'
-      log.error('Remove tenant failed:', errorMessage)
-      throw new Error(errorMessage)
+      return {
+        totalCreated,
+        errors,
+        success: totalCreated > 0
+      }
+    }, 'createBulkFlats')
+
+    if (data) {
+      if (data.totalCreated === flatNumbers.length) {
+        success('Success', `All ${data.totalCreated} flats created successfully!`)
+      } else if (data.totalCreated > 0) {
+        warning(
+          'Partial Success', 
+          `${data.totalCreated} of ${flatNumbers.length} flats created. ${data.errors.length} failed.`
+        )
+      } else {
+        showError('Failed', 'No flats were created. Please check the errors and try again.')
+      }
+      return data
+    } else {
+      return {
+        totalCreated: 0,
+        errors: [error?.message || 'Bulk operation failed'],
+        success: false
+      }
     }
   }
 
@@ -263,7 +445,9 @@ export const useFlats = () => {
     fetchFlatsForAddress,
     createFlat,
     deleteFlat,
-    removeTenant
+    removeTenant,
+    createBulkFlats, // New enhanced bulk operation
+    clearError: () => setError(null)
   }
 }
 
