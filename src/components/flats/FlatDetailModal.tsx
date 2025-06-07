@@ -1,4 +1,4 @@
-// src/components/flats/FlatDetailModal.tsx - Expanded flat details modal
+// src/components/flats/FlatDetailModal.tsx - Fixed and clean version
 "use client"
 
 import { useState } from 'react'
@@ -12,9 +12,64 @@ interface FlatDetailModalProps {
 }
 
 export const FlatDetailModal = ({ flat, isOpen, onClose, onUnregister }: FlatDetailModalProps) => {
-  const [activeTab, setActiveTab] = useState<'details' | 'actions' | 'history'>('details')
+  const [activeTab, setActiveTab] = useState<'details' | 'actions' | 'water' | 'history'>('details')
+  const [waterReading, setWaterReading] = useState('')
+  const [isSubmittingReading, setIsSubmittingReading] = useState(false)
 
   if (!isOpen) return null
+
+  // Mock data for water readings (last 12 months)
+  const waterReadings = [
+    { month: 'Jan 2024', reading: 1245.5, usage: 15.3 },
+    { month: 'Feb 2024', reading: 1260.8, usage: 18.7 },
+    { month: 'Mar 2024', reading: 1279.5, usage: 21.2 },
+    { month: 'Apr 2024', reading: 1300.7, usage: 19.8 },
+    { month: 'May 2024', reading: 1320.5, usage: 17.4 },
+    { month: 'Jun 2024', reading: 1337.9, usage: 22.1 },
+    { month: 'Jul 2024', reading: 1360.0, usage: 25.6 },
+    { month: 'Aug 2024', reading: 1385.6, usage: 23.9 },
+    { month: 'Sep 2024', reading: 1409.5, usage: 20.3 },
+    { month: 'Oct 2024', reading: 1429.8, usage: 18.7 },
+    { month: 'Nov 2024', reading: 1448.5, usage: 16.9 },
+    { month: 'Dec 2024', reading: 1465.4, usage: 19.2 }
+  ]
+
+  const currentReading = waterReadings[waterReadings.length - 1]?.reading || 0
+
+  const handleSubmitReading = async () => {
+    if (!waterReading.trim()) {
+      alert('Please enter a water meter reading')
+      return
+    }
+
+    const readingValue = parseFloat(waterReading)
+    if (isNaN(readingValue) || readingValue < 0) {
+      alert('Please enter a valid number for the water reading')
+      return
+    }
+
+    if (readingValue <= currentReading) {
+      alert(`Reading must be higher than the last reading (${currentReading})`)
+      return
+    }
+
+    setIsSubmittingReading(true)
+    
+    try {
+      // TODO: Implement API call to save water reading
+      // await submitWaterReading(flat.id, readingValue)
+      
+      // Simulate API call
+      await new Promise(resolve => setTimeout(resolve, 1000))
+      
+      alert('Water reading submitted successfully!')
+      setWaterReading('')
+    } catch (error) {
+      alert('Failed to submit water reading. Please try again.')
+    } finally {
+      setIsSubmittingReading(false)
+    }
+  }
 
   const handleUnregister = () => {
     if (confirm('Are you sure you want to unregister from this flat? This will mark the flat as vacant.')) {
@@ -68,6 +123,16 @@ export const FlatDetailModal = ({ flat, isOpen, onClose, onUnregister }: FlatDet
               Details
             </button>
             <button
+              onClick={() => setActiveTab('water')}
+              className={`py-4 px-1 border-b-2 font-medium text-sm ${
+                activeTab === 'water'
+                  ? 'border-blue-500 text-blue-600'
+                  : 'border-transparent text-gray-500 hover:text-gray-700'
+              }`}
+            >
+              Water Readings
+            </button>
+            <button
               onClick={() => setActiveTab('history')}
               className={`py-4 px-1 border-b-2 font-medium text-sm ${
                 activeTab === 'history'
@@ -82,13 +147,188 @@ export const FlatDetailModal = ({ flat, isOpen, onClose, onUnregister }: FlatDet
 
         {/* Modal Content */}
         <div className="p-6 max-h-[60vh] overflow-y-auto">
-          {/* Details Tab */}
-          {activeTab === 'details' && (
-            <div className="space-y-6">
-              {/* Property Information */}
-              <div>
-                <h3 className="text-lg font-medium text-gray-900 mb-4">Property Information</h3>
 
+          {/* Water Readings Tab */}
+          {activeTab === 'water' && (
+            <div className="space-y-6">
+              <h3 className="text-lg font-medium text-gray-900 mb-4">Water Meter Readings</h3>
+              
+              {/* Submit New Reading */}
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-6">
+                <h4 className="text-md font-medium text-gray-900 mb-4 flex items-center">
+                  <svg className="w-5 h-5 text-blue-600 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                  </svg>
+                  Submit New Reading
+                </h4>
+                
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-end">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Current Water Meter Reading
+                    </label>
+                    <input
+                      type="number"
+                      step="0.1"
+                      min={currentReading + 0.1}
+                      value={waterReading}
+                      onChange={(e) => setWaterReading(e.target.value)}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                      placeholder={`e.g., ${(currentReading + 15.5).toFixed(1)}`}
+                      disabled={isSubmittingReading}
+                    />
+                    <p className="text-xs text-gray-500 mt-1">
+                      Last reading: {currentReading} cubic meters
+                    </p>
+                  </div>
+                  
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Reading Date
+                    </label>
+                    <input
+                      type="date"
+                      value={new Date().toISOString().split('T')[0]}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                      disabled={isSubmittingReading}
+                    />
+                  </div>
+                  
+                  <button
+                    onClick={handleSubmitReading}
+                    disabled={isSubmittingReading || !waterReading.trim()}
+                    className="bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 text-white px-6 py-2 rounded-md font-medium transition-colors flex items-center justify-center"
+                  >
+                    {isSubmittingReading ? (
+                      <>
+                        <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                        Submitting...
+                      </>
+                    ) : (
+                      'Submit Reading'
+                    )}
+                  </button>
+                </div>
+                
+                <div className="mt-4 p-3 bg-blue-100 rounded-md">
+                  <p className="text-sm text-blue-800">
+                    <span className="font-medium">💡 Tip:</span> Submit your water meter reading monthly for accurate billing. 
+                    Make sure to read the numbers from your water meter carefully.
+                  </p>
+                </div>
+              </div>
+
+              {/* Usage Chart */}
+              <div>
+                <h4 className="text-md font-medium text-gray-900 mb-4">Water Usage - Last 12 Months</h4>
+                
+                {/* Chart Container */}
+                <div className="bg-white border border-gray-200 rounded-lg p-6">
+                  {/* Chart Header */}
+                  <div className="flex items-center justify-between mb-6">
+                    <div>
+                      <p className="text-sm text-gray-600">Monthly Water Consumption</p>
+                      <p className="text-2xl font-bold text-blue-600">
+                        {waterReadings[waterReadings.length - 1]?.usage || 0} m³
+                      </p>
+                      <p className="text-xs text-gray-500">Last month usage</p>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-sm text-gray-600">Average Monthly Usage</p>
+                      <p className="text-lg font-semibold text-gray-900">
+                        {(waterReadings.reduce((sum, r) => sum + r.usage, 0) / waterReadings.length).toFixed(1)} m³
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Simple Bar Chart */}
+                  <div className="space-y-3">
+                    {waterReadings.map((reading, index) => {
+                      const maxUsage = Math.max(...waterReadings.map(r => r.usage))
+                      const percentage = (reading.usage / maxUsage) * 100
+                      
+                      return (
+                        <div key={index} className="flex items-center space-x-3">
+                          <div className="w-16 text-xs text-gray-600 text-right">
+                            {reading.month.split(' ')[0]}
+                          </div>
+                          <div className="flex-1 bg-gray-200 rounded-full h-6 relative">
+                            <div
+                              className="bg-gradient-to-r from-blue-400 to-blue-600 h-6 rounded-full transition-all duration-500 flex items-center justify-end pr-2"
+                              style={{ width: `${percentage}%` }}
+                            >
+                              <span className="text-white text-xs font-medium">
+                                {reading.usage} m³
+                              </span>
+                            </div>
+                          </div>
+                          <div className="w-20 text-xs text-gray-600">
+                            {reading.reading} m³
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </div>
+
+                  {/* Chart Legend */}
+                  <div className="mt-6 pt-4 border-t border-gray-200">
+                    <div className="flex items-center justify-center space-x-6 text-xs text-gray-600">
+                      <div className="flex items-center space-x-2">
+                        <div className="w-3 h-3 bg-gradient-to-r from-blue-400 to-blue-600 rounded"></div>
+                        <span>Monthly Usage (m³)</span>
+                      </div>
+                      <div className="flex items-center space-x-2">
+                        <div className="w-3 h-3 bg-gray-300 rounded"></div>
+                        <span>Total Reading (m³)</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Statistics */}
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-4">
+                  <div className="bg-green-50 border border-green-200 rounded-lg p-4">
+                    <div className="flex items-center">
+                      <svg className="w-8 h-8 text-green-600 mr-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
+                      </svg>
+                      <div>
+                        <p className="text-sm font-medium text-green-900">Lowest Usage</p>
+                        <p className="text-lg font-bold text-green-600">
+                          {Math.min(...waterReadings.map(r => r.usage)).toFixed(1)} m³
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+                    <div className="flex items-center">
+                      <svg className="w-8 h-8 text-red-600 mr-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 17h8m0 0V9m0 8l-8-8-4 4-6-6" />
+                      </svg>
+                      <div>
+                        <p className="text-sm font-medium text-red-900">Highest Usage</p>
+                        <p className="text-lg font-bold text-red-600">
+                          {Math.max(...waterReadings.map(r => r.usage)).toFixed(1)} m³
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                    <div className="flex items-center">
+                      <svg className="w-8 h-8 text-blue-600 mr-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+                      </svg>
+                      <div>
+                        <p className="text-sm font-medium text-blue-900">Total Usage</p>
+                        <p className="text-lg font-bold text-blue-600">
+                          {waterReadings.reduce((sum, r) => sum + r.usage, 0).toFixed(1)} m³
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
               </div>
             </div>
           )}
