@@ -1,4 +1,4 @@
-// Updated MyFlatsManagement.tsx - Now uses PageHeader with burger menu
+// Updated MyFlatsManagement.tsx - Enhanced Error Handling
 "use client"
 
 import { useState } from 'react'
@@ -16,8 +16,6 @@ export const MyFlatsManagement = () => {
   const { profile, loading, isAuthenticated } = useAuth()
   const router = useRouter()
   const [showRegistrationForm, setShowRegistrationForm] = useState(false)
-  const [submitError, setSubmitError] = useState<string | null>(null)
-  const [submitSuccess, setSubmitSuccess] = useState<string | null>(null)
 
   const { 
     userFlats, 
@@ -53,56 +51,26 @@ export const MyFlatsManagement = () => {
     }
   }, [loading, isAuthenticated, profile, router])
 
-  // Clear messages after 5 seconds
-  useEffect(() => {
-    if (submitSuccess) {
-      const timer = setTimeout(() => setSubmitSuccess(null), 5000)
-      return () => clearTimeout(timer)
-    }
-  }, [submitSuccess])
-
-  useEffect(() => {
-    if (submitError) {
-      const timer = setTimeout(() => setSubmitError(null), 5000)
-      return () => clearTimeout(timer)
-    }
-  }, [submitError])
-
   const handleRegisterFlat = async (data: FlatRegistrationData) => {
     if (!profile?.id) return { success: false, message: 'User not found' }
 
-    setSubmitError(null)
-    setSubmitSuccess(null)
+    // Hook handles all success/error messaging via toasts
+    const result = await registerFlat(data, profile.id)
     
-    try {
-      const result = await registerFlat(data, profile.id)
-      if (result.success) {
-        setSubmitSuccess(result.message)
-        setShowRegistrationForm(false)
-      } else {
-        setSubmitError(result.message)
-      }
-      return result
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Error registering flat'
-      setSubmitError(errorMessage)
-      return { success: false, message: errorMessage }
+    if (result.success) {
+      setShowRegistrationForm(false)
     }
+    
+    return result
   }
 
   const handleUnregisterFlat = async (flatId: string) => {
-    try {
-      const result = await unregisterFlat(flatId)
-      setSubmitSuccess(result.message)
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Error unregistering flat'
-      setSubmitError(errorMessage)
-    }
+    // Hook handles all success/error messaging via toasts
+    await unregisterFlat(flatId)
   }
 
   const handleCancelRegistration = () => {
     setShowRegistrationForm(false)
-    setSubmitError(null)
   }
 
   // Show loading while checking auth
@@ -131,30 +99,6 @@ export const MyFlatsManagement = () => {
       <main className="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
         <div className="px-4 py-6 sm:px-0">
           
-          {/* Success Message */}
-          {submitSuccess && (
-            <div className="mb-6 p-4 bg-green-50 border border-green-200 rounded-md">
-              <div className="flex items-center">
-                <svg className="w-5 h-5 text-green-600 mr-2" fill="currentColor" viewBox="0 0 20 20">
-                  <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-                </svg>
-                <p className="text-green-800 text-sm font-medium">{submitSuccess}</p>
-              </div>
-            </div>
-          )}
-
-          {/* Error Message */}
-          {(submitError || error) && (
-            <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-md">
-              <div className="flex items-center">
-                <svg className="w-5 h-5 text-red-600 mr-2" fill="currentColor" viewBox="0 0 20 20">
-                  <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
-                </svg>
-                <p className="text-red-800 text-sm font-medium">{submitError || error}</p>
-              </div>
-            </div>
-          )}
-
           {/* User Request Status */}
           <UserRequestStatus userId={profile.id} />
 
@@ -190,6 +134,12 @@ export const MyFlatsManagement = () => {
                 <div className="text-center py-8">
                   <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto"></div>
                   <p className="mt-2 text-sm text-gray-600">Loading your flats...</p>
+                </div>
+              ) : error ? (
+                <div className="text-center py-8">
+                  <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+                    <p className="text-red-800 text-sm">{error}</p>
+                  </div>
                 </div>
               ) : userFlats.length === 0 ? (
                 <div className="text-center py-12">

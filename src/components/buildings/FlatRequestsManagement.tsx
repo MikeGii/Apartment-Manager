@@ -4,6 +4,7 @@
 import { useState } from 'react'
 import { useFlatRequests, FlatRequest } from '@/hooks/useFlatRequests'
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner'
+import { useToast } from '@/components/ui/Toast'
 
 interface FlatRequestsManagementProps {
   userId: string
@@ -14,51 +15,47 @@ export const FlatRequestsManagement = ({ userId, userRole }: FlatRequestsManagem
   const { requests, loading, approveRequest, rejectRequest } = useFlatRequests(userId, userRole)
   const [processingRequests, setProcessingRequests] = useState<Set<string>>(new Set())
   const [notes, setNotes] = useState<Record<string, string>>({})
+  const { warning } = useToast() // For client-side validation
 
   const pendingRequests = requests.filter(req => req.status === 'pending')
   const reviewedRequests = requests.filter(req => req.status !== 'pending')
 
   const handleApprove = async (requestId: string) => {
     setProcessingRequests(prev => new Set(prev).add(requestId))
-    try {
-      const result = await approveRequest(requestId, notes[requestId])
-      if (result.success) {
-        alert(result.message)
-        setNotes(prev => ({ ...prev, [requestId]: '' }))
-      } else {
-        alert(result.message)
-      }
-    } finally {
-      setProcessingRequests(prev => {
-        const newSet = new Set(prev)
-        newSet.delete(requestId)
-        return newSet
-      })
-    }
+    
+    // Hook handles all success/error messaging via toasts
+    await approveRequest(requestId, notes[requestId])
+    
+    // Clear the notes field on completion
+    setNotes(prev => ({ ...prev, [requestId]: '' }))
+    
+    setProcessingRequests(prev => {
+      const newSet = new Set(prev)
+      newSet.delete(requestId)
+      return newSet
+    })
   }
 
   const handleReject = async (requestId: string) => {
+    // Client-side validation with toast warning
     if (!notes[requestId]?.trim()) {
-      alert('Please provide a reason for rejection in the notes field.')
+      warning('Validation Error', 'Please provide a reason for rejection in the notes field.')
       return
     }
     
     setProcessingRequests(prev => new Set(prev).add(requestId))
-    try {
-      const result = await rejectRequest(requestId, notes[requestId])
-      if (result.success) {
-        alert(result.message)
-        setNotes(prev => ({ ...prev, [requestId]: '' }))
-      } else {
-        alert(result.message)
-      }
-    } finally {
-      setProcessingRequests(prev => {
-        const newSet = new Set(prev)
-        newSet.delete(requestId)
-        return newSet
-      })
-    }
+    
+    // Hook handles all success/error messaging via toasts
+    await rejectRequest(requestId, notes[requestId])
+    
+    // Clear the notes field on completion
+    setNotes(prev => ({ ...prev, [requestId]: '' }))
+    
+    setProcessingRequests(prev => {
+      const newSet = new Set(prev)
+      newSet.delete(requestId)
+      return newSet
+    })
   }
 
   const updateNotes = (requestId: string, value: string) => {

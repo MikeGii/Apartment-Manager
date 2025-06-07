@@ -3,8 +3,9 @@
 
 import React, { useState, useEffect } from 'react'
 import { useForm } from 'react-hook-form'
-import { useFlats, Flat, FlatFormData } from '@/hooks/useFlats'
+import { useFlats, FlatFormData } from '@/hooks/useFlats'
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner'
+import { useToast } from '@/components/ui/Toast'
 
 interface FlatManagementProps {
   addressId: string
@@ -14,8 +15,7 @@ interface FlatManagementProps {
 
 export const FlatManagement = ({ addressId, addressFullName, managerId }: FlatManagementProps) => {
   const [showFlatForm, setShowFlatForm] = useState(false)
-  const [submitError, setSubmitError] = useState<string | null>(null)
-  const [submitSuccess, setSubmitSuccess] = useState<string | null>(null)
+  const { warning } = useToast() // Only for client-side validation
   
   const { flats, loading, error, fetchFlatsForAddress, createFlat, deleteFlat, removeTenant } = useFlats()
   
@@ -33,34 +33,21 @@ export const FlatManagement = ({ addressId, addressFullName, managerId }: FlatMa
     }
   }, [addressId, fetchFlatsForAddress])
 
-  // Clear messages after 5 seconds
-  useEffect(() => {
-    if (submitSuccess) {
-      const timer = setTimeout(() => setSubmitSuccess(null), 5000)
-      return () => clearTimeout(timer)
-    }
-  }, [submitSuccess])
-
-  useEffect(() => {
-    if (submitError) {
-      const timer = setTimeout(() => setSubmitError(null), 5000)
-      return () => clearTimeout(timer)
-    }
-  }, [submitError])
-
   const handleCreateFlat = async (data: FlatFormData) => {
-    setSubmitError(null)
-    setSubmitSuccess(null)
+    // Client-side validation with toast warnings
+    if (!data.unit_number?.trim()) {
+      warning('Validation Error', 'Please enter a flat number')
+      return
+    }
+
+    // Hook handles all success/error messaging via toasts
+    const result = await createFlat(addressId, data, managerId, addressFullName)
     
-    try {
-      const result = await createFlat(addressId, data, managerId, addressFullName)
-      setSubmitSuccess(result.message)
+    if (result.success) {
       reset()
       setShowFlatForm(false)
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Error creating flat'
-      setSubmitError(errorMessage)
     }
+    // No need for manual error handling - toasts are handled in the hook
   }
 
   const handleDeleteFlat = async (flatId: string) => {
@@ -68,13 +55,8 @@ export const FlatManagement = ({ addressId, addressFullName, managerId }: FlatMa
       return
     }
 
-    try {
-      const result = await deleteFlat(flatId, addressId)
-      setSubmitSuccess(result.message)
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Error deleting flat'
-      setSubmitError(errorMessage)
-    }
+    // Hook handles all success/error messaging via toasts
+    await deleteFlat(flatId, addressId)
   }
 
   const handleRemoveTenant = async (flatId: string) => {
@@ -82,18 +64,12 @@ export const FlatManagement = ({ addressId, addressFullName, managerId }: FlatMa
       return
     }
 
-    try {
-      const result = await removeTenant(flatId, addressId)
-      setSubmitSuccess(result.message)
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Error removing tenant'
-      setSubmitError(errorMessage)
-    }
+    // Hook handles all success/error messaging via toasts
+    await removeTenant(flatId, addressId)
   }
 
   const handleCancelForm = () => {
     setShowFlatForm(false)
-    setSubmitError(null)
     reset()
   }
 
@@ -111,30 +87,6 @@ export const FlatManagement = ({ addressId, addressFullName, managerId }: FlatMa
           {showFlatForm ? 'Cancel' : 'Add Flat'}
         </button>
       </div>
-
-      {/* Success Message */}
-      {submitSuccess && (
-        <div className="mb-4 p-3 bg-green-50 border border-green-200 rounded-md">
-          <div className="flex items-center">
-            <svg className="w-5 h-5 text-green-600 mr-2" fill="currentColor" viewBox="0 0 20 20">
-              <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-            </svg>
-            <p className="text-green-800 text-sm">{submitSuccess}</p>
-          </div>
-        </div>
-      )}
-
-      {/* Error Message */}
-      {(submitError || error) && (
-        <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-md">
-          <div className="flex items-center">
-            <svg className="w-5 h-5 text-red-600 mr-2" fill="currentColor" viewBox="0 0 20 20">
-              <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
-            </svg>
-            <p className="text-red-800 text-sm">{submitError || error}</p>
-          </div>
-        </div>
-      )}
 
       {/* Add Flat Form */}
       {showFlatForm && (
