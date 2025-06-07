@@ -1,8 +1,9 @@
 // src/components/flats/FlatDetailModal.tsx - Fixed and clean version
 "use client"
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { UserFlat } from '@/hooks/useUserFlats'
+import { supabase } from '@/lib/supabase'
 
 interface FlatDetailModalProps {
   flat: UserFlat
@@ -11,12 +12,72 @@ interface FlatDetailModalProps {
   onUnregister: (flatId: string) => void
 }
 
+interface BuildingManager {
+  id: string
+  full_name: string
+  email: string
+  phone?: string
+}
+
 export const FlatDetailModal = ({ flat, isOpen, onClose, onUnregister }: FlatDetailModalProps) => {
   const [activeTab, setActiveTab] = useState<'details' | 'actions' | 'water' | 'history'>('details')
   const [waterReading, setWaterReading] = useState('')
   const [isSubmittingReading, setIsSubmittingReading] = useState(false)
+  const [buildingManager, setBuildingManager] = useState<BuildingManager | null>(null)
+  const [loadingManager, setLoadingManager] = useState(false)
 
   if (!isOpen) return null
+
+  // Fetch building manager data
+  const fetchBuildingManager = async () => {
+    if (!flat.building_id) return
+
+    setLoadingManager(true)
+    try {
+      // Get building data first to find the manager_id
+      const { data: building, error: buildingError } = await supabase
+        .from('buildings')
+        .select('manager_id')
+        .eq('id', flat.building_id)
+        .single()
+
+      if (buildingError) {
+        console.error('Error fetching building:', buildingError)
+        return
+      }
+
+      if (!building?.manager_id) {
+        console.warn('No manager assigned to this building')
+        return
+      }
+
+      // Get manager profile data
+      const { data: manager, error: managerError } = await supabase
+        .from('profiles')
+        .select('id, full_name, email, phone')
+        .eq('id', building.manager_id)
+        .eq('role', 'building_manager')
+        .single()
+
+      if (managerError) {
+        console.error('Error fetching manager:', managerError)
+        return
+      }
+
+      setBuildingManager(manager)
+    } catch (error) {
+      console.error('Error fetching building manager:', error)
+    } finally {
+      setLoadingManager(false)
+    }
+  }
+
+  // Fetch manager data when modal opens
+  useEffect(() => {
+    if (isOpen && flat.building_id) {
+      fetchBuildingManager()
+    }
+  }, [isOpen, flat.building_id])
 
   // Mock data for water readings (last 12 months)
   const waterReadings = [
@@ -147,6 +208,87 @@ export const FlatDetailModal = ({ flat, isOpen, onClose, onUnregister }: FlatDet
 
         {/* Modal Content */}
         <div className="p-6 max-h-[60vh] overflow-y-auto">
+          {/* Details Tab */}
+          {activeTab === 'details' && (
+            <div className="space-y-6">
+              {/* Building Manager Information */}
+              <div>
+                <h3 className="text-lg font-medium text-gray-900 mb-4">Building Manager</h3>
+                <div className="bg-blue-50 border border-blue-200 rounded-lg p-6">
+                  {loadingManager ? (
+                    <div className="flex items-center justify-center py-8">
+                      <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600 mr-3"></div>
+                      <p className="text-blue-700">Loading manager information...</p>
+                    </div>
+                  ) : buildingManager ? (
+                    <div className="flex items-start space-x-4">
+                      <div className="bg-blue-100 rounded-lg p-3">
+                        <svg className="w-8 h-8 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                        </svg>
+                      </div>
+                      <div className="flex-1">
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                          <div>
+                            <label className="block text-sm font-medium text-blue-900 mb-1">
+                              Manager Name
+                            </label>
+                            <p className="text-gray-900 font-semibold">
+                              {buildingManager.full_name || 'Name not available'}
+                            </p>
+                          </div>
+                          
+                          <div>
+                            <label className="block text-sm font-medium text-blue-900 mb-1">
+                              Email Address
+                            </label>
+                            <p className="text-gray-900">{buildingManager.email}</p>
+                            {buildingManager.email && (
+                              <a
+                                href={`mailto:${buildingManager.email}`}
+                                className="text-blue-600 hover:text-blue-800 text-sm font-medium mt-1 inline-block"
+                              >
+                                Send Email →
+                              </a>
+                            )}
+                          </div>
+                          
+                          <div>
+                            <label className="block text-sm font-medium text-blue-900 mb-1">
+                              Phone Number
+                            </label>
+                            <p className="text-gray-900">
+                              {buildingManager.phone || 'Phone not available'}
+                            </p>
+                            {buildingManager.phone && (
+                              <a
+                                href={`tel:${buildingManager.phone}`}
+                                className="text-blue-600 hover:text-blue-800 text-sm font-medium mt-1 inline-block"
+                              >
+                                Call Now →
+                              </a>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="text-center py-8">
+                      <div className="bg-yellow-100 rounded-lg p-3 w-16 h-16 mx-auto mb-4 flex items-center justify-center">
+                        <svg className="w-8 h-8 text-yellow-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                        </svg>
+                      </div>
+                      <p className="text-gray-600 font-medium">No building manager assigned</p>
+                      <p className="text-gray-500 text-sm mt-1">
+                        Contact building administration for manager information
+                      </p>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* Water Readings Tab */}
           {activeTab === 'water' && (
