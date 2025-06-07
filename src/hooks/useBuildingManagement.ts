@@ -12,7 +12,7 @@ const log = createLogger('useBuildingManagement')
 export type BuildingOverview = {
   id: string
   name: string
-  address_id: string
+  address: string
   address_full: string
   street_and_number: string
   total_flats: number
@@ -187,7 +187,7 @@ export const useBuildingManagement = (managerId?: string) => {
             return {
               id: building.id,
               name: building.name,
-              address_id: building.address,
+              address: building.address,
               address_full: fullAddress,
               street_and_number: streetAndNumber,
               total_flats: totalFlats,
@@ -200,7 +200,7 @@ export const useBuildingManagement = (managerId?: string) => {
             return {
               id: building.id,
               name: building.name || 'Unknown Building',
-              address_id: building.address || '',
+              address: building.address || '',
               address_full: 'Error loading address',
               street_and_number: 'Error',
               total_flats: 0,
@@ -264,28 +264,26 @@ export const useBuildingManagement = (managerId?: string) => {
       }
 
       // Transform the data
-      const flatsWithTenants: FlatDetail[] = (flats || []).map((flat: any) => ({
-        id: flat.id,
-        unit_number: flat.unit_number,
-        tenant_id: flat.tenant_id,
-        tenant_name: flat.profiles?.full_name || undefined,
-        tenant_email: flat.profiles?.email || undefined,
-        tenant_phone: flat.profiles?.phone || undefined,
-      }))
+    const flatsWithTenants: FlatDetail[] = (flats || []).map((flat: any) => ({
+      id: flat.id,
+      unit_number: flat.unit_number,
+      tenant_id: flat.tenant_id,
+      tenant_name: flat.profiles?.full_name || undefined,
+      tenant_email: flat.profiles?.email || undefined,
+      tenant_phone: flat.profiles?.phone || undefined,
+    }))
 
-      // FIXED: Apply numerical sorting instead of SQL ordering
-      const sortedFlats = sortUnitNumbers(flatsWithTenants)
+    // FIXED: Apply numerical sorting
+    const sortedFlats = sortUnitNumbers(flatsWithTenants)
 
-      log.debug(`Fetched ${sortedFlats.length} flats for building ${buildingId}`)
-      
-      // Cache the results
-      flatsCacheRef.current.set(buildingId, {
-        buildingId,
-        flats: sortedFlats,
-        timestamp: now
-      })
-      
-      return sortedFlats
+    // Cache and return the sorted flats
+    flatsCacheRef.current.set(buildingId, {
+      buildingId,
+      flats: sortedFlats,
+      timestamp: now
+    })
+
+    return sortedFlats
     } catch (error) {
       log.error('Error fetching building flats:', error)
       return []

@@ -9,13 +9,13 @@ import { createLogger } from '@/utils/logger'
 
 const log = createLogger('BuildingSelector')
 
-// Use consistent column name - UPDATE THIS based on your schema choice
-const BUILDING_ADDRESS_COLUMN = 'address' // Change to 'address_id' if that's your choice
+// Buildings table uses 'address' column consistently
+const BUILDING_ADDRESS_COLUMN = 'address'
 
 interface Building {
   id: string
   name: string
-  address_id: string
+  address: string
   street_and_number: string
   settlement_name: string
   settlement_type: string
@@ -139,7 +139,7 @@ export const BuildingSelector = ({
             return {
               id: building.id,
               name: building.name,
-              address_id: building.address,
+              address: building.address,
               street_and_number: addressData.street_and_number,
               settlement_name: settlement?.name || 'Unknown',
               settlement_type: settlement?.settlement_type || '',
@@ -154,7 +154,7 @@ export const BuildingSelector = ({
             return {
               id: building.id,
               name: building.name,
-              address_id: building.address,
+              address: building.address,
               street_and_number: addressData.street_and_number,
               settlement_name: 'Unknown',
               settlement_type: '',
@@ -250,7 +250,7 @@ export const BuildingSelector = ({
                     setShowManualInput(true)
                     setValue('street_and_number', '')
                   } else if (e.target.value) {
-                    const building = buildings.find(b => b.address_id === e.target.value)
+                    const building = buildings.find(b => b.address === e.target.value)
                     if (building) {
                       handleBuildingSelect(building)
                     }
@@ -261,7 +261,7 @@ export const BuildingSelector = ({
               >
                 <option value="">Select a building from the list</option>
                 {buildings.map((building) => (
-                  <option key={building.address_id} value={building.address_id}>
+                  <option key={building.address} value={building.address}>
                     {building.street_and_number} - {building.name}
                   </option>
                 ))}

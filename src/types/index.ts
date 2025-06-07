@@ -27,7 +27,7 @@ export type AddressStatus = 'pending' | 'approved' | 'rejected'
 export interface Building {
   id: string
   name: string
-  address_id: string
+  address: string
   manager_id: string
   created_at?: string
 }
