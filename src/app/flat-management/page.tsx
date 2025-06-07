@@ -1,4 +1,4 @@
-// src/app/flat-management/page.tsx - New Flat Management Page
+// src/app/flat-management/page.tsx - Updated with Pending Registrations block
 "use client"
 
 import { useState, useEffect, useMemo } from 'react'
@@ -7,6 +7,7 @@ import { useRouter } from 'next/navigation'
 import { PageHeader } from '@/components/ui/PageHeader'
 import { FullScreenLoader } from '@/components/ui/LoadingSpinner'
 import { useBuildingManagement } from '@/hooks/useBuildingManagement'
+import { useFlatRequests } from '@/hooks/useFlatRequests'
 
 export default function FlatManagementPage() {
   const { profile, loading, isAuthenticated } = useAuth()
@@ -21,6 +22,20 @@ export default function FlatManagementPage() {
     error: buildingsError,
     fetchBuildings
   } = useBuildingManagement(profile?.id)
+
+  // Get pending registrations for this manager
+  const { 
+    requests: allRequests, 
+    loading: requestsLoading, 
+    approveRequest, 
+    rejectRequest 
+  } = useFlatRequests(profile?.id, profile?.role)
+
+  // Filter for pending requests only
+  const pendingRequests = useMemo(() => 
+    allRequests.filter(req => req.status === 'pending'), 
+    [allRequests]
+  )
 
   // Access control - redirect if not authorized
   useEffect(() => {
@@ -72,6 +87,38 @@ export default function FlatManagementPage() {
 
   const hasMoreBuildings = filteredBuildings.length > 3
 
+  // Handle request approval/rejection
+  const handleApproveRequest = async (requestId: string, notes?: string) => {
+    try {
+      const result = await approveRequest(requestId, notes)
+      if (result.success) {
+        alert(result.message)
+      } else {
+        alert(`Error: ${result.message}`)
+      }
+    } catch (error) {
+      alert('Failed to approve request. Please try again.')
+    }
+  }
+
+  const handleRejectRequest = async (requestId: string, notes: string) => {
+    if (!notes.trim()) {
+      alert('Please provide a reason for rejection.')
+      return
+    }
+    
+    try {
+      const result = await rejectRequest(requestId, notes)
+      if (result.success) {
+        alert(result.message)
+      } else {
+        alert(`Error: ${result.message}`)
+      }
+    } catch (error) {
+      alert('Failed to reject request. Please try again.')
+    }
+  }
+
   // Show loading while checking auth
   if (loading) {
     return <FullScreenLoader message="Loading authentication..." />
@@ -97,7 +144,55 @@ export default function FlatManagementPage() {
         <div className="px-4 py-6 sm:px-0">
           
           {/* Pending Registrations Section */}
-          <PendingRegistrations managerId={profile.id} />
+          <div className="bg-white shadow rounded-lg mb-8">
+            <div className="px-4 py-5 sm:p-6">
+              <div className="flex items-center justify-between mb-6">
+                <div>
+                  <h3 className="text-lg leading-6 font-medium text-gray-900">
+                    Pending Registration Requests ({pendingRequests.length})
+                  </h3>
+                  <p className="mt-1 text-sm text-gray-600">
+                    Review and manage flat registration requests from tenants
+                  </p>
+                </div>
+                {pendingRequests.length > 0 && (
+                  <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-orange-100 text-orange-800">
+                    Action Required
+                  </span>
+                )}
+              </div>
+
+              {requestsLoading ? (
+                <div className="text-center py-8">
+                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto"></div>
+                  <p className="mt-2 text-sm text-gray-600">Loading pending requests...</p>
+                </div>
+              ) : pendingRequests.length === 0 ? (
+                <div className="text-center py-12 px-4 border-2 border-dashed border-gray-300 rounded-lg">
+                  <div className="text-gray-400 mb-4">
+                    <svg className="mx-auto h-12 w-12" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                    </svg>
+                  </div>
+                  <h4 className="text-lg font-medium text-gray-900 mb-2">No pending requests</h4>
+                  <p className="text-gray-500 text-sm">
+                    All registration requests have been processed.
+                  </p>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {pendingRequests.map((request) => (
+                    <PendingRequestCard
+                      key={request.id}
+                      request={request}
+                      onApprove={handleApproveRequest}
+                      onReject={handleRejectRequest}
+                    />
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
 
           {/* Buildings Overview Section */}
           <div className="bg-white shadow rounded-lg mb-8">
@@ -269,7 +364,194 @@ export default function FlatManagementPage() {
   )
 }
 
-// Building Card Component
+// Pending Request Card Component  
+interface PendingRequestCardProps {
+  request: {
+    id: string
+    unit_number: string
+    building_name: string
+    address_full: string
+    user_name?: string
+    user_email: string
+    user_phone?: string
+    requested_at: string
+  }
+  onApprove: (requestId: string, notes?: string) => void
+  onReject: (requestId: string, notes: string) => void
+}
+
+const PendingRequestCard = ({ request, onApprove, onReject }: PendingRequestCardProps) => {
+  const [showActions, setShowActions] = useState(false)
+  const [notes, setNotes] = useState('')
+  const [isProcessing, setIsProcessing] = useState(false)
+
+  const handleApprove = async () => {
+    setIsProcessing(true)
+    try {
+      await onApprove(request.id, notes.trim() || undefined)
+      setShowActions(false)
+      setNotes('')
+    } finally {
+      setIsProcessing(false)
+    }
+  }
+
+  const handleReject = async () => {
+    if (!notes.trim()) {
+      alert('Please provide a reason for rejection.')
+      return
+    }
+    
+    setIsProcessing(true)
+    try {
+      await onReject(request.id, notes.trim())
+      setShowActions(false)
+      setNotes('')
+    } finally {
+      setIsProcessing(false)
+    }
+  }
+
+  // Debug log to see what data we're getting
+  console.log('Request data:', request)
+
+  return (
+    <div className="border border-orange-200 bg-orange-50 rounded-lg p-6 hover:bg-orange-100 transition-colors">
+      <div className="flex items-start justify-between">
+        <div className="flex-1 min-w-0">
+          {/* Request Header */}
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center space-x-3">
+              <div className="bg-orange-100 rounded-lg p-2">
+                <svg className="w-5 h-5 text-orange-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                </svg>
+              </div>
+              <div>
+                <h4 className="font-semibold text-gray-900 text-lg">
+                  Flat {request.unit_number || 'Unknown'} - {request.address_full || 'Address loading...'}
+                </h4>
+                <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-orange-100 text-orange-800">
+                  Registration Request
+                </span>
+              </div>
+            </div>
+            
+            {/* Request Date - Top Right */}
+            <div className="text-right">
+              <p className="text-xs text-gray-500">Requested</p>
+              <p className="text-sm font-medium text-gray-700">
+                {new Date(request.requested_at).toLocaleDateString()}
+              </p>
+            </div>
+          </div>
+
+          {/* Applicant Info - Single Column */}
+          <div className="mb-4">
+            <p className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-2">Applicant</p>
+            <div className="bg-white p-3 rounded-md border border-orange-200">
+              <p className="text-sm font-medium text-gray-900 mb-1">
+                {request.user_name || 'Name not provided'}
+              </p>
+              {showActions && (
+                <div className="text-sm text-gray-600 space-y-1">
+                  <p><span className="font-medium">Email:</span> {request.user_email}</p>
+                  {request.user_phone && (
+                    <p><span className="font-medium">Phone:</span> {request.user_phone}</p>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Action Panel */}
+          {showActions && (
+            <div className="mt-4 p-4 bg-white rounded-lg border border-orange-200">
+              <div className="mb-3">
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Notes (optional for approval, required for rejection)
+                </label>
+                <textarea
+                  value={notes}
+                  onChange={(e) => setNotes(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                  rows={3}
+                  placeholder="Add notes about this request..."
+                  disabled={isProcessing}
+                />
+              </div>
+              
+              <div className="flex space-x-3">
+                <button
+                  onClick={handleApprove}
+                  disabled={isProcessing}
+                  className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-md text-sm font-medium disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors flex items-center space-x-1"
+                >
+                  {isProcessing ? (
+                    <>
+                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                      <span>Processing...</span>
+                    </>
+                  ) : (
+                    <>
+                      <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                        <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                      </svg>
+                      <span>Approve</span>
+                    </>
+                  )}
+                </button>
+                <button
+                  onClick={handleReject}
+                  disabled={isProcessing}
+                  className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-md text-sm font-medium disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors flex items-center space-x-1"
+                >
+                  {isProcessing ? (
+                    <>
+                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                      <span>Processing...</span>
+                    </>
+                  ) : (
+                    <>
+                      <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                        <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
+                      </svg>
+                      <span>Reject</span>
+                    </>
+                  )}
+                </button>
+                <button
+                  onClick={() => {
+                    setShowActions(false)
+                    setNotes('')
+                  }}
+                  disabled={isProcessing}
+                  className="bg-gray-600 hover:bg-gray-700 text-white px-4 py-2 rounded-md text-sm font-medium disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+        
+        {/* Action Button */}
+        <div className="ml-4">
+          {!showActions && (
+            <button
+              onClick={() => setShowActions(true)}
+              className="bg-orange-600 hover:bg-orange-700 text-white px-4 py-2 rounded-md text-sm font-medium transition-colors"
+            >
+              Review
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// Building Card Component (same as before)
 interface BuildingCardProps {
   building: {
     id: string

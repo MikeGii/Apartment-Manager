@@ -1,4 +1,4 @@
-// src/hooks/useFlatRequests.ts - Cleaned version with proper error handling
+// src/hooks/useFlatRequests.ts - Fixed version with manual joins
 "use client"
 
 import { useState, useEffect, useCallback, useRef } from 'react'
@@ -22,6 +22,7 @@ export type FlatRequest = {
   address_full: string
   user_name?: string
   user_email: string
+  user_phone?: string
 }
 
 type RequestsCache = {
@@ -81,6 +82,9 @@ export const useFlatRequests = (userId?: string, userRole?: string) => {
       if (userRole === 'user') {
         baseQuery = baseQuery.eq('user_id', userId)
         log.debug('Filtering for user requests only')
+      } else if (userRole === 'building_manager') {
+        // For building managers, we need to filter by buildings they manage
+        // We'll do this after we get the data since it requires complex joins
       }
 
       const { data: rawRequests, error: requestsError } = await baseQuery
@@ -99,9 +103,9 @@ export const useFlatRequests = (userId?: string, userRole?: string) => {
 
       log.debug(`Processing ${rawRequests.length} requests`)
 
-      // Enrich requests with related data
+      // Process each request and enrich with data using manual joins
       const enrichedRequests = await Promise.all(
-        rawRequests.map(async (request): Promise<FlatRequest> => {
+        rawRequests.map(async (request): Promise<FlatRequest | null> => {
           const result: FlatRequest = {
             id: request.id,
             flat_id: request.flat_id,
@@ -111,100 +115,137 @@ export const useFlatRequests = (userId?: string, userRole?: string) => {
             reviewed_at: request.reviewed_at,
             reviewed_by: request.reviewed_by,
             notes: request.notes,
-            unit_number: 'Loading...',
-            building_name: 'Loading...',
-            address_full: 'Loading...',
+            unit_number: 'Unknown',
+            building_name: 'Unknown',
+            address_full: 'Unknown',
             user_name: undefined,
-            user_email: 'Loading...'
+            user_email: 'Unknown',
+            user_phone: undefined
           }
 
           try {
-            // Get flat and building data in one go with proper typing
+            // Step 1: Get flat data
             const { data: flatData, error: flatError } = await supabase
               .from('flats')
-              .select(`
-                unit_number,
-                buildings (
-                  name,
-                  addresses (
-                    street_and_number,
-                    settlements (
-                      name,
-                      settlement_type,
-                      municipalities (
-                        name,
-                        counties (
-                          name
-                        )
-                      )
-                    )
-                  )
-                )
-              `)
+              .select('unit_number, building_id')
               .eq('id', request.flat_id)
               .single()
 
-            if (!flatError && flatData) {
-              result.unit_number = flatData.unit_number
-              
-              // Type the building data properly
-              const building = flatData.buildings as any
-              if (building) {
-                result.building_name = building.name
-                
-                // Type the address data properly
-                const address = building.addresses as any
-                if (address) {
-                  const settlement = address.settlements as any
-                  const municipality = settlement?.municipalities as any
-                  const county = municipality?.[0]?.counties as any
-                  
-                  if (settlement && municipality && county) {
-                    result.address_full = `${address.street_and_number}, ${settlement.name} ${settlement.settlement_type}, ${municipality[0].name}, ${county[0].name}`
-                  } else {
-                    result.address_full = address.street_and_number
-                  }
-                }
-              }
-            } else {
-              log.warn('Could not fetch flat data for request:', request.id)
-              result.unit_number = 'Unknown'
-              result.building_name = 'Unknown'
-              result.address_full = 'Unknown'
+            if (flatError || !flatData) {
+              log.warn(`Could not fetch flat data for request: ${request.id}`, flatError)
+              return result // Return with "Unknown" values
             }
 
-            // Get user data
+            result.unit_number = flatData.unit_number
+
+            // Step 2: Get building data
+            const { data: buildingData, error: buildingError } = await supabase
+              .from('buildings')
+              .select('name, address, manager_id')
+              .eq('id', flatData.building_id)
+              .single()
+
+            if (buildingError || !buildingData) {
+              log.warn(`Could not fetch building data for flat: ${flatData.building_id}`, buildingError)
+              return result // Return with partial data
+            }
+
+            result.building_name = buildingData.name
+
+            // For building managers, filter out requests for buildings they don't manage
+            if (userRole === 'building_manager' && buildingData.manager_id !== userId) {
+              return null // Filter out this request
+            }
+
+            // Step 3: Get address data
+            const { data: addressData, error: addressError } = await supabase
+              .from('addresses')
+              .select('street_and_number, settlement_id')
+              .eq('id', buildingData.address)
+              .single()
+
+            if (addressError || !addressData) {
+              log.warn(`Could not fetch address data for building: ${buildingData.address}`, addressError)
+              result.address_full = 'Address not found'
+            } else {
+              // Step 4: Build full address with location hierarchy
+              try {
+                const { data: settlement, error: settlementError } = await supabase
+                  .from('settlements')
+                  .select('name, settlement_type, municipality_id')
+                  .eq('id', addressData.settlement_id)
+                  .single()
+
+                if (!settlementError && settlement) {
+                  const { data: municipality, error: municipalityError } = await supabase
+                    .from('municipalities')
+                    .select('name, county_id')
+                    .eq('id', settlement.municipality_id)
+                    .single()
+
+                  if (!municipalityError && municipality) {
+                    const { data: county, error: countyError } = await supabase
+                      .from('counties')
+                      .select('name')
+                      .eq('id', municipality.county_id)
+                      .single()
+
+                    if (!countyError && county) {
+                      result.address_full = `${addressData.street_and_number}, ${settlement.name} ${settlement.settlement_type}, ${municipality.name}, ${county.name}`
+                    } else {
+                      result.address_full = `${addressData.street_and_number}, ${settlement.name} ${settlement.settlement_type}, ${municipality.name}`
+                    }
+                  } else {
+                    result.address_full = `${addressData.street_and_number}, ${settlement.name} ${settlement.settlement_type}`
+                  }
+                } else {
+                  result.address_full = addressData.street_and_number
+                }
+              } catch (locationError) {
+                log.warn('Error building full address:', locationError)
+                result.address_full = addressData.street_and_number
+              }
+            }
+
+            // Step 5: Get user data
             const { data: userData, error: userError } = await supabase
               .from('profiles')
-              .select('full_name, email')
+              .select('full_name, email, phone')
               .eq('id', request.user_id)
               .single()
 
             if (!userError && userData) {
               result.user_name = userData.full_name
               result.user_email = userData.email
+              result.user_phone = userData.phone
             } else {
-              log.warn('Could not fetch user data for request:', request.id)
+              log.warn(`Could not fetch user data for request: ${request.id}`, userError)
               result.user_email = 'Unknown'
             }
 
+            log.debug(`Successfully enriched request: ${request.id}`, {
+              unit_number: result.unit_number,
+              building_name: result.building_name,
+              address_full: result.address_full
+            })
+
+            return result
+
           } catch (processingError) {
             log.error('Error processing request:', request.id, processingError)
-            result.unit_number = 'Error'
-            result.building_name = 'Error'
-            result.address_full = 'Error'
-            result.user_email = 'Error'
+            return result // Return with default "Unknown" values
           }
-
-          return result
         })
       )
 
-      log.debug(`Successfully processed ${enrichedRequests.length} requests`)
-      setRequests(enrichedRequests)
+      // Filter out null results (building manager requests for other buildings)
+      const validRequests = enrichedRequests.filter((req): req is FlatRequest => req !== null)
+
+      log.debug(`Successfully processed ${validRequests.length} requests`)
+      setRequests(validRequests)
       
       // Cache the results
-      cacheRef.current = { userId, userRole, data: enrichedRequests, timestamp: now }
+      cacheRef.current = { userId, userRole, data: validRequests, timestamp: now }
       
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Failed to load registration requests'
