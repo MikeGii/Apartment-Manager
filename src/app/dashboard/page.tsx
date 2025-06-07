@@ -1,4 +1,4 @@
-// src/app/dashboard/page.tsx - Clean dashboard router
+// src/app/dashboard/page.tsx - Clean dashboard router without buildings references
 "use client"
 
 import ProtectedRoute from '@/components/ProtectedRoute'
@@ -76,33 +76,6 @@ export default function Dashboard() {
 }
 
 // Temporary legacy components for other roles (will be replaced)
-const LegacyManagerDashboard = () => (
-  <div className="bg-white shadow rounded-lg mb-8">
-    <div className="px-4 py-5 sm:p-6">
-      <h2 className="text-2xl font-bold text-gray-900 mb-4">
-        Building Manager Dashboard
-      </h2>
-      <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-        <div className="flex items-start space-x-3">
-          <div className="text-2xl">🏢</div>
-          <div>
-            <h3 className="font-semibold text-blue-900">Building Manager Dashboard</h3>
-            <p className="text-blue-700 text-sm mt-1 font-medium">
-              Manage your buildings, approve tenant requests, add flats, and oversee building operations.
-            </p>
-            <a
-              href="/buildings"
-              className="inline-flex items-center mt-3 text-sm font-semibold text-blue-600 hover:text-blue-500"
-            >
-              Access Building Management →
-            </a>
-          </div>
-        </div>
-      </div>
-    </div>
-  </div>
-)
-
 const LegacyAdminDashboard = () => (
   <div className="bg-white shadow rounded-lg mb-8">
     <div className="px-4 py-5 sm:p-6">
@@ -125,10 +98,10 @@ const LegacyAdminDashboard = () => (
                 Admin Panel →
               </a>
               <a
-                href="/buildings"
+                href="/building-management"
                 className="inline-flex items-center text-sm font-semibold text-blue-600 hover:text-blue-500"
               >
-                Buildings →
+                Building Management →
               </a>
             </div>
           </div>
