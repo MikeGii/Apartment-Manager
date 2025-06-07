@@ -9,7 +9,7 @@ First, run the development server:
 1. Clone the repo and run `pnpm install`
 2. Create a Supabase project at supabase.com
 3. Copy `.env.example` to `.env.local` and add your Supabase credentials
-4. Import the database schema from `schema.sql`
+4. Import the database schema from `Database Schema.txt` file from root folder.
 5. Run `pnpm run dev`
 ```
 
