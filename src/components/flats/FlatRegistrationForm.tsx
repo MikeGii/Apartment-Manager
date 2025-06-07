@@ -5,6 +5,7 @@ import { useForm } from 'react-hook-form'
 import { FlatRegistrationData } from '@/hooks/useUserFlats'
 import { AddressHierarchy } from '@/components/buildings/AddressManagement/AddressHierarchy'
 import { BuildingSelector } from './BuildingSelector'
+import { useToast } from '@/components/ui/Toast'
 
 interface FlatRegistrationFormProps {
   onSubmit: (data: FlatRegistrationData) => Promise<{ success: boolean; message: string }>
@@ -13,6 +14,8 @@ interface FlatRegistrationFormProps {
 }
 
 export const FlatRegistrationForm = ({ onSubmit, onCancel, isSubmitting = false }: FlatRegistrationFormProps) => {
+  const { warning } = useToast()
+  
   const {
     register,
     handleSubmit,
@@ -27,15 +30,30 @@ export const FlatRegistrationForm = ({ onSubmit, onCancel, isSubmitting = false 
   const watchedSettlement = watch('settlement_id')
 
   const handleFormSubmit = async (data: FlatRegistrationData) => {
+    // Basic client-side validation with toast warnings
+    if (!data.settlement_id) {
+      warning('Validation Error', 'Please select a settlement')
+      return
+    }
+    
+    if (!data.street_and_number?.trim()) {
+      warning('Validation Error', 'Please enter a street address')
+      return
+    }
+    
+    if (!data.unit_number?.trim()) {
+      warning('Validation Error', 'Please enter your flat number')
+      return
+    }
+
+    // The hook now handles all success/error messaging via toasts
     const result = await onSubmit(data)
     
     if (result.success) {
       reset()
-      onCancel() // Close the form
+      onCancel() // Close the form on success
     }
-    
-    // Show message regardless of success/failure
-    alert(result.message)
+    // No need to handle errors here - the hook displays error toasts
   }
 
   return (

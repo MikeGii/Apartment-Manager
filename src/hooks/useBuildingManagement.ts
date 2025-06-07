@@ -1,4 +1,4 @@
-// src/hooks/useBuildingManagement.ts - Fixed version with numerical sorting
+// src/hooks/useBuildingManagement.ts - Fixed version with explicit relationship specification
 "use client"
 
 import { useState, useEffect, useCallback, useRef } from 'react'
@@ -55,22 +55,6 @@ export const useBuildingManagement = (managerId?: string) => {
   const buildingCacheRef = useRef<BuildingCache | null>(null)
   const flatsCacheRef = useRef<Map<string, FlatsCache>>(new Map())
   const fetchingRef = useRef(false)
-
-  const sortUnitNumbers = <T extends { unit_number: string }>(items: T[]): T[] => {
-  return items.sort((a, b) => {
-    const aNum = a.unit_number
-    const bNum = b.unit_number
-    
-    const aNumeric = parseInt(aNum.match(/^\d+/)?.[0] || '0')
-    const bNumeric = parseInt(bNum.match(/^\d+/)?.[0] || '0')
-    
-    if (aNumeric !== bNumeric) {
-      return aNumeric - bNumeric
-    }
-    
-    return aNum.localeCompare(bNum, undefined, { numeric: true, sensitivity: 'base' })
-  })
-  }
 
   const fetchBuildings = useCallback(async (forceRefresh = false) => {
     if (!managerId) {
@@ -228,6 +212,7 @@ export const useBuildingManagement = (managerId?: string) => {
     }
   }, [managerId])
 
+  // FIXED: fetchBuildingFlats with explicit relationship specification
   const fetchBuildingFlats = useCallback(async (buildingId: string, forceRefresh = false): Promise<FlatDetail[]> => {
     if (!buildingId) {
       log.debug('No buildingId provided')
@@ -245,13 +230,14 @@ export const useBuildingManagement = (managerId?: string) => {
     try {
       log.debug('Fetching flats for building:', buildingId)
       
+      // FIXED: Explicitly specify the tenant relationship using the correct foreign key name
       const { data: flats, error: flatsError } = await supabase
         .from(DATABASE_COLUMNS.FLATS_TABLE)
         .select(`
           id,
           unit_number,
           tenant_id,
-          profiles (
+          tenant:profiles!flats_tenant_id_fkey (
             full_name,
             email,
             phone
@@ -260,30 +246,91 @@ export const useBuildingManagement = (managerId?: string) => {
         .eq('building_id', buildingId)
 
       if (flatsError) {
-        throw new Error(`Failed to fetch flats: ${flatsError.message}`)
+        // If the explicit foreign key name doesn't work, try alternative approach
+        if (flatsError.message.includes('relationship')) {
+          log.warn('Explicit foreign key failed, trying manual join')
+          
+          // Get flats first
+          const { data: flatsOnly, error: flatsOnlyError } = await supabase
+            .from(DATABASE_COLUMNS.FLATS_TABLE)
+            .select('id, unit_number, tenant_id')
+            .eq('building_id', buildingId)
+
+          if (flatsOnlyError) {
+            throw new Error(`Failed to fetch flats: ${flatsOnlyError.message}`)
+          }
+
+          // Then get tenant details separately for each flat
+          const flatsWithTenants: FlatDetail[] = await Promise.all(
+            (flatsOnly || []).map(async (flat): Promise<FlatDetail> => {
+              let tenantDetails = {
+                tenant_name: undefined,
+                tenant_email: undefined,
+                tenant_phone: undefined,
+              }
+
+              if (flat.tenant_id) {
+                try {
+                  const { data: tenant, error: tenantError } = await supabase
+                    .from('profiles')
+                    .select('full_name, email, phone')
+                    .eq('id', flat.tenant_id)
+                    .single()
+
+                  if (!tenantError && tenant) {
+                    tenantDetails = {
+                      tenant_name: tenant.full_name,
+                      tenant_email: tenant.email,
+                      tenant_phone: tenant.phone,
+                    }
+                  }
+                } catch (tenantFetchError) {
+                  log.warn('Could not fetch tenant details for flat:', flat.id)
+                }
+              }
+
+              return {
+                id: flat.id,
+                unit_number: flat.unit_number,
+                tenant_id: flat.tenant_id,
+                ...tenantDetails
+              }
+            })
+          )
+
+          const sortedFlats = sortUnitNumbers(flatsWithTenants)
+          flatsCacheRef.current.set(buildingId, {
+            buildingId,
+            flats: sortedFlats,
+            timestamp: now
+          })
+          return sortedFlats
+        } else {
+          throw new Error(`Failed to fetch flats: ${flatsError.message}`)
+        }
       }
 
-      // Transform the data
-    const flatsWithTenants: FlatDetail[] = (flats || []).map((flat: any) => ({
-      id: flat.id,
-      unit_number: flat.unit_number,
-      tenant_id: flat.tenant_id,
-      tenant_name: flat.profiles?.full_name || undefined,
-      tenant_email: flat.profiles?.email || undefined,
-      tenant_phone: flat.profiles?.phone || undefined,
-    }))
+      // Transform the data if the explicit join worked
+      const flatsWithTenants: FlatDetail[] = (flats || []).map((flat: any) => ({
+        id: flat.id,
+        unit_number: flat.unit_number,
+        tenant_id: flat.tenant_id,
+        tenant_name: flat.tenant?.full_name || undefined,
+        tenant_email: flat.tenant?.email || undefined,
+        tenant_phone: flat.tenant?.phone || undefined,
+      }))
 
-    // FIXED: Apply numerical sorting
-    const sortedFlats = sortUnitNumbers(flatsWithTenants)
+      // Apply numerical sorting
+      const sortedFlats = sortUnitNumbers(flatsWithTenants)
 
-    // Cache and return the sorted flats
-    flatsCacheRef.current.set(buildingId, {
-      buildingId,
-      flats: sortedFlats,
-      timestamp: now
-    })
+      // Cache and return the sorted flats
+      flatsCacheRef.current.set(buildingId, {
+        buildingId,
+        flats: sortedFlats,
+        timestamp: now
+      })
 
-    return sortedFlats
+      return sortedFlats
     } catch (error) {
       log.error('Error fetching building flats:', error)
       return []
