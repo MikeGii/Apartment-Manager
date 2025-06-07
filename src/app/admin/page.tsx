@@ -1,4 +1,4 @@
-// src/app/admin/page.tsx - DRASTICALLY SIMPLIFIED (from 30KB to ~3KB!)
+// src/app/admin/page.tsx
 "use client"
 
 import { useAuth } from '@/hooks/useAuth'

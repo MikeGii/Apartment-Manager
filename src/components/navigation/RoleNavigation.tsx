@@ -1,4 +1,4 @@
-// src/components/navigation/RoleNavigation.tsx - Role-specific navigation items
+// src/components/navigation/RoleNavigation.tsx - Updated with Flat Management
 "use client"
 
 export interface NavigationItem {
@@ -13,11 +13,11 @@ export const getUserNavigation = (): NavigationItem[] => [
   { label: 'My Flats', path: '/my-flats', icon: '🏠' },
 ]
 
-// Building Manager Navigation
+// Building Manager Navigation - UPDATED
 export const getBuildingManagerNavigation = (): NavigationItem[] => [
   { label: 'Address Management', path: '/address-management', icon: '📍' },
   { label: 'Building Management', path: '/building-management', icon: '🏢' },
-  { label: 'Flat Management', path: '/building-management#flats', icon: '🏠' }, // Added #flats to make URL unique
+  { label: 'Flat Management', path: '/flat-management', icon: '🏠' }, // NEW
 ]
 
 // Admin Navigation
