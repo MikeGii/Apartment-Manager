@@ -1,0 +1,87 @@
+-- WARNING: This schema is for context only and is not meant to be run.
+-- Table order and constraints may not be valid for execution.
+
+CREATE TABLE public.addresses (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  settlement_id uuid,
+  street_and_number text NOT NULL,
+  created_by uuid,
+  approved_by uuid,
+  status text DEFAULT 'pending'::text CHECK (status = ANY (ARRAY['pending'::text, 'approved'::text, 'rejected'::text])),
+  created_at timestamp with time zone DEFAULT now(),
+  updated_at timestamp with time zone DEFAULT now(),
+  CONSTRAINT addresses_pkey PRIMARY KEY (id),
+  CONSTRAINT addresses_created_by_fkey FOREIGN KEY (created_by) REFERENCES public.profiles(id),
+  CONSTRAINT addresses_settlement_id_fkey FOREIGN KEY (settlement_id) REFERENCES public.settlements(id),
+  CONSTRAINT addresses_approved_by_fkey FOREIGN KEY (approved_by) REFERENCES public.profiles(id)
+);
+CREATE TABLE public.buildings (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  name text NOT NULL,
+  address text NOT NULL,
+  manager_id uuid,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  CONSTRAINT buildings_pkey PRIMARY KEY (id),
+  CONSTRAINT buildings_manager_id_fkey FOREIGN KEY (manager_id) REFERENCES public.profiles(id)
+);
+CREATE TABLE public.counties (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  name text NOT NULL UNIQUE,
+  created_at timestamp with time zone DEFAULT now(),
+  CONSTRAINT counties_pkey PRIMARY KEY (id)
+);
+CREATE TABLE public.flat_registration_requests (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  flat_id uuid NOT NULL,
+  user_id uuid NOT NULL,
+  status text NOT NULL DEFAULT 'pending'::text CHECK (status = ANY (ARRAY['pending'::text, 'approved'::text, 'rejected'::text])),
+  requested_at timestamp with time zone DEFAULT now(),
+  reviewed_at timestamp with time zone,
+  reviewed_by uuid,
+  notes text,
+  created_at timestamp with time zone DEFAULT now(),
+  updated_at timestamp with time zone DEFAULT now(),
+  CONSTRAINT flat_registration_requests_pkey PRIMARY KEY (id),
+  CONSTRAINT flat_registration_requests_flat_id_fkey FOREIGN KEY (flat_id) REFERENCES public.flats(id),
+  CONSTRAINT flat_registration_requests_user_id_fkey FOREIGN KEY (user_id) REFERENCES auth.users(id),
+  CONSTRAINT flat_registration_requests_reviewed_by_fkey FOREIGN KEY (reviewed_by) REFERENCES auth.users(id)
+);
+CREATE TABLE public.flats (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  building_id uuid,
+  unit_number text NOT NULL,
+  floor integer,
+  tenant_id uuid,
+  created_at timestamp with time zone DEFAULT now(),
+  updated_at timestamp with time zone DEFAULT now(),
+  CONSTRAINT flats_pkey PRIMARY KEY (id),
+  CONSTRAINT flats_building_id_fkey FOREIGN KEY (building_id) REFERENCES public.buildings(id),
+  CONSTRAINT flats_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES public.profiles(id)
+);
+CREATE TABLE public.municipalities (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  county_id uuid,
+  name text NOT NULL,
+  created_at timestamp with time zone DEFAULT now(),
+  CONSTRAINT municipalities_pkey PRIMARY KEY (id),
+  CONSTRAINT municipalities_county_id_fkey FOREIGN KEY (county_id) REFERENCES public.counties(id)
+);
+CREATE TABLE public.profiles (
+  id uuid NOT NULL,
+  email text NOT NULL,
+  full_name text,
+  role text NOT NULL DEFAULT '"user"'::text,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  updated_at timestamp with time zone NOT NULL DEFAULT now(),
+  phone character varying,
+  CONSTRAINT profiles_pkey PRIMARY KEY (id)
+);
+CREATE TABLE public.settlements (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  municipality_id uuid,
+  name text NOT NULL,
+  settlement_type text NOT NULL,
+  created_at timestamp with time zone DEFAULT now(),
+  CONSTRAINT settlements_pkey PRIMARY KEY (id),
+  CONSTRAINT settlements_municipality_id_fkey FOREIGN KEY (municipality_id) REFERENCES public.municipalities(id)
+);
