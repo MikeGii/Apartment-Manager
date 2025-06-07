@@ -5,13 +5,12 @@ This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-
 First, run the development server:
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+## Setup
+1. Clone the repo and run `pnpm install`
+2. Create a Supabase project at supabase.com
+3. Copy `.env.example` to `.env.local` and add your Supabase credentials
+4. Import the database schema from `schema.sql`
+5. Run `pnpm run dev`
 ```
 
 Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
