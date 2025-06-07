@@ -1,4 +1,4 @@
-// Updated MyFlatsManagement.tsx - Enhanced Error Handling
+// src/components/flats/MyFlatsManagement.tsx - Updated with modal integration
 "use client"
 
 import { useState } from 'react'
@@ -7,15 +7,18 @@ import { useRouter } from 'next/navigation'
 import { useEffect } from 'react'
 import { PageHeader } from '@/components/ui/PageHeader'
 import { FullScreenLoader } from '@/components/ui/LoadingSpinner'
-import { useUserFlats, FlatRegistrationData } from '@/hooks/useUserFlats'
+import { useUserFlats, FlatRegistrationData, UserFlat } from '@/hooks/useUserFlats'
 import { FlatRegistrationForm } from './FlatRegistrationForm'
 import { UserFlatCard } from './UserFlatCard'
 import { UserRequestStatus } from './UserRequestStatus'
+import { FlatDetailModal } from './FlatDetailModal'
 
 export const MyFlatsManagement = () => {
   const { profile, loading, isAuthenticated } = useAuth()
   const router = useRouter()
   const [showRegistrationForm, setShowRegistrationForm] = useState(false)
+  const [selectedFlat, setSelectedFlat] = useState<UserFlat | null>(null)
+  const [showFlatModal, setShowFlatModal] = useState(false)
 
   const { 
     userFlats, 
@@ -54,7 +57,6 @@ export const MyFlatsManagement = () => {
   const handleRegisterFlat = async (data: FlatRegistrationData) => {
     if (!profile?.id) return { success: false, message: 'User not found' }
 
-    // Hook handles all success/error messaging via toasts
     const result = await registerFlat(data, profile.id)
     
     if (result.success) {
@@ -65,12 +67,21 @@ export const MyFlatsManagement = () => {
   }
 
   const handleUnregisterFlat = async (flatId: string) => {
-    // Hook handles all success/error messaging via toasts
     await unregisterFlat(flatId)
   }
 
   const handleCancelRegistration = () => {
     setShowRegistrationForm(false)
+  }
+
+  const handleFlatClick = (flat: UserFlat) => {
+    setSelectedFlat(flat)
+    setShowFlatModal(true)
+  }
+
+  const handleCloseFlatModal = () => {
+    setShowFlatModal(false)
+    setSelectedFlat(null)
   }
 
   // Show loading while checking auth
@@ -164,8 +175,13 @@ export const MyFlatsManagement = () => {
                 </div>
               ) : (
                 <div>
-                  <div className="mb-4 text-sm text-gray-600">
-                    You have {userFlats.length} registered flat{userFlats.length > 1 ? 's' : ''}
+                  <div className="mb-4 flex justify-between items-center">
+                    <div className="text-sm text-gray-600">
+                      You have {userFlats.length} registered flat{userFlats.length > 1 ? 's' : ''}
+                    </div>
+                    <div className="text-xs text-blue-600 font-medium">
+                      Click on any flat to view details
+                    </div>
                   </div>
                   
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -174,6 +190,7 @@ export const MyFlatsManagement = () => {
                         key={flat.id} 
                         flat={flat} 
                         onUnregister={handleUnregisterFlat}
+                        onClick={handleFlatClick}
                       />
                     ))}
                   </div>
@@ -186,7 +203,7 @@ export const MyFlatsManagement = () => {
                       <div className="text-sm text-blue-800">
                         <p className="font-medium">Tenant Management</p>
                         <p className="text-blue-700">
-                          Manage your registered flats and stay connected with building management.
+                          Manage your registered flats and stay connected with building management. Click on any flat card to view detailed information and available actions.
                         </p>
                       </div>
                     </div>
@@ -198,6 +215,16 @@ export const MyFlatsManagement = () => {
 
         </div>
       </main>
+
+      {/* Flat Detail Modal */}
+      {selectedFlat && (
+        <FlatDetailModal
+          flat={selectedFlat}
+          isOpen={showFlatModal}
+          onClose={handleCloseFlatModal}
+          onUnregister={handleUnregisterFlat}
+        />
+      )}
     </div>
   )
 }

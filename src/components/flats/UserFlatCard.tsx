@@ -1,4 +1,4 @@
-// src/components/flats/UserFlatCard.tsx
+// src/components/flats/UserFlatCard.tsx - Enhanced with click functionality
 "use client"
 
 import { useState } from 'react'
@@ -7,20 +7,38 @@ import { UserFlat } from '@/hooks/useUserFlats'
 interface UserFlatCardProps {
   flat: UserFlat
   onUnregister: (flatId: string) => void
+  onClick?: (flat: UserFlat) => void
 }
 
-export const UserFlatCard = ({ flat, onUnregister }: UserFlatCardProps) => {
+export const UserFlatCard = ({ flat, onUnregister, onClick }: UserFlatCardProps) => {
   const [showMenu, setShowMenu] = useState(false)
 
-  const handleUnregister = () => {
+  const handleUnregister = (e: React.MouseEvent) => {
+    e.stopPropagation() // Prevent card click when clicking unregister
     if (confirm('Are you sure you want to unregister from this flat? This will mark the flat as vacant.')) {
       onUnregister(flat.id)
       setShowMenu(false)
     }
   }
 
+  const handleCardClick = () => {
+    if (onClick) {
+      onClick(flat)
+    }
+  }
+
+  const handleMenuClick = (e: React.MouseEvent) => {
+    e.stopPropagation() // Prevent card click when clicking menu
+    setShowMenu(!showMenu)
+  }
+
   return (
-    <div className="bg-white border border-gray-200 rounded-lg shadow-sm hover:shadow-md transition-shadow">
+    <div 
+      className={`bg-white border border-gray-200 rounded-lg shadow-sm transition-all duration-200 ${
+        onClick ? 'hover:shadow-md hover:border-blue-300 cursor-pointer' : ''
+      }`}
+      onClick={handleCardClick}
+    >
       <div className="p-6">
         <div className="flex justify-between items-start">
           <div className="flex-1">
@@ -45,8 +63,8 @@ export const UserFlatCard = ({ flat, onUnregister }: UserFlatCardProps) => {
             {/* Address Info - Simplified */}
             <div className="space-y-2">
               <div>
-                <p className="text-sm font-medium text-gray-700">Address</p>
-                <p className="text-sm text-gray-600">{flat.address_full}</p>
+                <p className="text-sm font-medium text-gray-700">Building</p>
+                <p className="text-sm text-gray-600">{flat.building_name}</p>
               </div>
             </div>
 
@@ -59,12 +77,19 @@ export const UserFlatCard = ({ flat, onUnregister }: UserFlatCardProps) => {
                 <span className="text-sm font-medium">Registered</span>
               </div>
             </div>
+
+            {/* Click to view details hint */}
+            {onClick && (
+              <div className="mt-3 text-xs text-blue-600 font-medium">
+                Click to view details →
+              </div>
+            )}
           </div>
           
           {/* Actions Menu */}
           <div className="ml-4 relative">
             <button 
-              onClick={() => setShowMenu(!showMenu)}
+              onClick={handleMenuClick}
               className="text-gray-400 hover:text-gray-600 transition-colors"
             >
               <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
