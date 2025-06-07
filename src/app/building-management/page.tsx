@@ -408,7 +408,7 @@ export default function BuildingManagementPage() {
             <BulkFlatCreation
               buildingId={selectedBuildingId}
               buildingName={getSelectedBuilding()?.address_full || 'Selected Building'}
-              addressId={getSelectedBuilding()?.address_id || ''}
+              addressId={getSelectedBuilding()?.address || ''}
               managerId={profile.id}
               onClose={() => setShowBulkCreation(false)}
               onSuccess={handleBulkCreationSuccess}
