@@ -1,4 +1,4 @@
-// src/components/flats/MyFlatsManagement.tsx
+// Updated MyFlatsManagement.tsx - Now uses PageHeader with burger menu
 "use client"
 
 import { useState } from 'react'
@@ -122,7 +122,7 @@ export const MyFlatsManagement = () => {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100">
-      {/* Header */}
+      {/* Header with Burger Menu */}
       <PageHeader 
         title="My Flats" 
         profile={profile} 

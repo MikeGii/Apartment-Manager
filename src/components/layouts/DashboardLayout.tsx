@@ -1,50 +1,22 @@
-// src/components/layouts/DashboardLayout.tsx - Updated layout with clean navigation
+// Updated DashboardLayout.tsx - Now includes burger menu navigation
 "use client"
 
 import { useAuth } from '@/hooks/useAuth'
 import { useRouter } from 'next/navigation'
 import { ReactNode } from 'react'
+import { NavigationMenu } from '@/components/ui/NavigationMenu'
 
 interface DashboardLayoutProps {
   children: ReactNode
 }
 
 export const DashboardLayout = ({ children }: DashboardLayoutProps) => {
-  const { profile, signOut } = useAuth()
+  const { profile } = useAuth()
   const router = useRouter()
-
-  const handleSignOut = async () => {
-    try {
-      await signOut()
-      router.push('/login')
-    } catch (error) {
-      console.error('Dashboard - Sign out error:', error)
-    }
-  }
-
-  const getRoleDisplayName = (role: string) => {
-    switch(role) {
-      case 'user': return 'Flat Owner'
-      case 'accountant': return 'Accountant'
-      case 'building_manager': return 'Building Manager'
-      case 'admin': return 'Administrator'
-      default: return role.replace('_', ' ').toUpperCase()
-    }
-  }
-
-  const getRoleColor = (role: string) => {
-    switch(role) {
-      case 'user': return 'bg-green-100 text-green-800'
-      case 'accountant': return 'bg-yellow-100 text-yellow-800'
-      case 'building_manager': return 'bg-blue-100 text-blue-800'
-      case 'admin': return 'bg-red-100 text-red-800'
-      default: return 'bg-gray-100 text-gray-800'
-    }
-  }
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-indigo-50">
-      {/* Header - Clean and minimal */}
+      {/* Header - Clean and minimal with burger menu */}
       <header className="bg-white shadow-sm border-b border-gray-200">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center py-6">
@@ -63,21 +35,14 @@ export const DashboardLayout = ({ children }: DashboardLayoutProps) => {
               </div>
             </div>
             
-            {/* Right side - User info and sign out only */}
+            {/* Right side - User info and navigation menu */}
             <div className="flex items-center space-x-4">
               <div className="text-sm text-gray-700 font-medium">
                 Welcome, {profile?.full_name || profile?.email}!
               </div>
-              <div className={`text-xs px-3 py-1 rounded-full font-semibold ${profile?.role ? getRoleColor(profile.role) : 'bg-gray-100 text-gray-800'}`}>
-                {profile?.role ? getRoleDisplayName(profile.role) : 'Loading...'}
-              </div>
               
-              <button
-                onClick={handleSignOut}
-                className="text-sm text-red-600 hover:text-red-800 font-semibold transition-colors"
-              >
-                Sign Out
-              </button>
+              {/* Navigation Menu - Now included in dashboard */}
+              {profile && <NavigationMenu profile={profile} />}
             </div>
           </div>
         </div>

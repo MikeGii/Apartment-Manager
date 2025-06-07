@@ -5,6 +5,7 @@ import { useAuth } from '@/hooks/useAuth'
 import { useRouter } from 'next/navigation'
 import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
+import { NavigationMenu } from '@/components/ui/NavigationMenu'
 
 type Profile = {
   id: string
@@ -390,7 +391,7 @@ export default function AdminDashboard() {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      {/* Header */}
+      {/* Header with Burger Menu */}
       <header className="bg-white shadow-sm border-b">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center py-6">
@@ -401,21 +402,9 @@ export default function AdminDashboard() {
               <div className="text-sm text-gray-700 font-medium">
                 Welcome back, {profile?.full_name || profile?.email}!
               </div>
-              <div className="text-xs px-3 py-1 rounded-full bg-red-100 text-red-800 font-semibold">
-                {getRoleDisplayName(profile?.role || '')}
-              </div>
-              <a
-                href="/dashboard"
-                className="text-sm bg-blue-600 hover:bg-blue-700 text-white px-3 py-1 rounded-md transition-colors font-medium"
-              >
-                Back to Dashboard
-              </a>
-              <button
-                onClick={handleSignOut}
-                className="text-sm text-red-600 hover:text-red-800 font-semibold"
-              >
-                Sign Out
-              </button>
+              
+              {/* Navigation Menu */}
+              {profile && <NavigationMenu profile={profile} />}
             </div>
           </div>
         </div>

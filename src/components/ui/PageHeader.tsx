@@ -1,8 +1,7 @@
-// Updated PageHeader.tsx - With Navigation Menu
+// Updated PageHeader.tsx - Removed role display, keeping burger menu
 "use client"
 
 import { NavigationMenu } from './NavigationMenu'
-import { getRoleDisplayName } from '@/components/navigation/RoleNavigation'
 
 interface Profile {
   id: string
@@ -27,9 +26,6 @@ export const PageHeader = ({ title, profile }: PageHeaderProps) => {
           <div className="flex items-center space-x-4">
             <span className="text-sm text-gray-700 font-medium">
               Welcome, {profile.full_name || profile.email}!
-            </span>
-            <span className="text-xs px-3 py-1 rounded-full bg-blue-100 text-blue-800 font-semibold">
-              {getRoleDisplayName(profile.role)}
             </span>
             
             {/* Navigation Menu */}
