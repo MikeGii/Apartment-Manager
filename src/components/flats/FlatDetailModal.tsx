@@ -1,4 +1,4 @@
-// src/components/flats/FlatDetailModal.tsx - Fixed and clean version
+// src/components/flats/FlatDetailModal.tsx - Complete version with water usage
 "use client"
 
 import { useState, useEffect } from 'react'
@@ -20,7 +20,7 @@ interface BuildingManager {
 }
 
 export const FlatDetailModal = ({ flat, isOpen, onClose, onUnregister }: FlatDetailModalProps) => {
-  const [activeTab, setActiveTab] = useState<'details' | 'actions' | 'water' | 'history'>('details')
+  const [activeTab, setActiveTab] = useState<'details' | 'water' | 'history'>('details')
   const [waterReading, setWaterReading] = useState('')
   const [isSubmittingReading, setIsSubmittingReading] = useState(false)
   const [buildingManager, setBuildingManager] = useState<BuildingManager | null>(null)
@@ -28,43 +28,32 @@ export const FlatDetailModal = ({ flat, isOpen, onClose, onUnregister }: FlatDet
 
   if (!isOpen) return null
 
-  // Fetch building manager data
+  // Fetch building manager data (now works with RLS policy)
   const fetchBuildingManager = async () => {
     if (!flat.building_id) return
 
     setLoadingManager(true)
     try {
-      // Get building data first to find the manager_id
       const { data: building, error: buildingError } = await supabase
         .from('buildings')
-        .select('manager_id')
+        .select('id, name, manager_id')
         .eq('id', flat.building_id)
         .single()
 
-      if (buildingError) {
-        console.error('Error fetching building:', buildingError)
+      if (buildingError || !building?.manager_id) {
+        setBuildingManager(null)
         return
       }
 
-      if (!building?.manager_id) {
-        console.warn('No manager assigned to this building')
-        return
-      }
-
-      // Get manager profile data
       const { data: manager, error: managerError } = await supabase
         .from('profiles')
         .select('id, full_name, email, phone')
         .eq('id', building.manager_id)
-        .eq('role', 'building_manager')
         .single()
 
-      if (managerError) {
-        console.error('Error fetching manager:', managerError)
-        return
+      if (!managerError && manager) {
+        setBuildingManager(manager)
       }
-
-      setBuildingManager(manager)
     } catch (error) {
       console.error('Error fetching building manager:', error)
     } finally {
@@ -140,7 +129,6 @@ export const FlatDetailModal = ({ flat, isOpen, onClose, onUnregister }: FlatDet
   }
 
   const handleBackgroundClick = (e: React.MouseEvent) => {
-    // Only close if clicking the background, not the modal content
     if (e.target === e.currentTarget) {
       onClose()
     }
