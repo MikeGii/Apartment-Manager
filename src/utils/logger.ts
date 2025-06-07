@@ -49,10 +49,10 @@ export const logger = new Logger()
 
 // Utility function for creating context-specific loggers
 export const createLogger = (context: string) => ({
-  debug: (message: string, data?: any, p0?: string, userRole?: string | undefined) => logger.debug(context, message, data),
+  debug: (message: string, data?: any) => logger.debug(context, message, data),
   info: (message: string, data?: any) => logger.info(context, message, data),
   warn: (message: string, data?: any) => logger.warn(context, message, data),
-  error: (message: string, data?: any, processingError?: unknown) => logger.error(context, message, data)
+  error: (message: string, data?: any) => logger.error(context, message, data)
 })
 
 // Example usage in hooks:

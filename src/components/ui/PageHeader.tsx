@@ -1,5 +1,8 @@
-// Updated PageHeader.tsx - Proper role display without duplicate navigation
+// Updated PageHeader.tsx - With Navigation Menu
 "use client"
+
+import { NavigationMenu } from './NavigationMenu'
+import { getRoleDisplayName } from '@/components/navigation/RoleNavigation'
 
 interface Profile {
   id: string
@@ -14,17 +17,6 @@ interface PageHeaderProps {
 }
 
 export const PageHeader = ({ title, profile }: PageHeaderProps) => {
-  // Function to get display name for roles
-  const getRoleDisplayName = (role: string) => {
-    switch(role) {
-      case 'user': return 'Flat Owner'
-      case 'accountant': return 'Accountant'
-      case 'building_manager': return 'Building Manager'
-      case 'admin': return 'Administrator'
-      default: return role.replace('_', ' ').toUpperCase()
-    }
-  }
-
   return (
     <header className="bg-white shadow-sm border-b">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -40,7 +32,8 @@ export const PageHeader = ({ title, profile }: PageHeaderProps) => {
               {getRoleDisplayName(profile.role)}
             </span>
             
-            {/* Clean header - no navigation buttons */}
+            {/* Navigation Menu */}
+            <NavigationMenu profile={profile} />
           </div>
         </div>
       </div>

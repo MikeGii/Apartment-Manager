@@ -1,4 +1,4 @@
-// src/app/building-management/page.tsx - Building Management for Building Managers
+// src/app/building-management/page.tsx - Enhanced Building Management with Bulk Flat Creation
 "use client"
 
 import { useState, useEffect } from 'react'
@@ -7,6 +7,7 @@ import { useRouter } from 'next/navigation'
 import { PageHeader } from '@/components/ui/PageHeader'
 import { FullScreenLoader } from '@/components/ui/LoadingSpinner'
 import { useBuildingManagement, BuildingOverview, FlatDetail } from '@/hooks/useBuildingManagement'
+import { BulkFlatCreation } from '@/components/buildings/BulkFlatCreation'
 
 export default function BuildingManagementPage() {
   const { profile, loading, isAuthenticated } = useAuth()
@@ -14,13 +15,16 @@ export default function BuildingManagementPage() {
   const [selectedBuildingId, setSelectedBuildingId] = useState<string | null>(null)
   const [buildingFlats, setBuildingFlats] = useState<FlatDetail[]>([])
   const [loadingFlats, setLoadingFlats] = useState(false)
+  const [showBulkCreation, setShowBulkCreation] = useState(false)
+  const [successMessage, setSuccessMessage] = useState<string | null>(null)
   
   // Use the actual building management hook
   const { 
     buildings, 
     loading: buildingsLoading, 
     error: buildingsError,
-    fetchBuildingFlats 
+    fetchBuildingFlats,
+    fetchBuildings
   } = useBuildingManagement(profile?.id)
 
   // Access control
@@ -42,6 +46,14 @@ export default function BuildingManagementPage() {
     }
   }, [loading, isAuthenticated, profile, router])
 
+  // Clear success message after 5 seconds
+  useEffect(() => {
+    if (successMessage) {
+      const timer = setTimeout(() => setSuccessMessage(null), 5000)
+      return () => clearTimeout(timer)
+    }
+  }, [successMessage])
+
   const handleBuildingClick = async (buildingId: string) => {
     setSelectedBuildingId(buildingId)
     setLoadingFlats(true)
@@ -59,6 +71,19 @@ export default function BuildingManagementPage() {
 
   const getSelectedBuilding = () => {
     return buildings.find(b => b.id === selectedBuildingId)
+  }
+
+  const handleBulkCreationSuccess = async (flatsCreated: number) => {
+    setSuccessMessage(`Successfully created ${flatsCreated} flats!`)
+    
+    // Refresh the buildings list and flats
+    await fetchBuildings()
+    
+    // Refresh the current building's flats if one is selected
+    if (selectedBuildingId) {
+      const updatedFlats = await fetchBuildingFlats(selectedBuildingId)
+      setBuildingFlats(updatedFlats)
+    }
   }
 
   // Show loading while checking auth
@@ -85,6 +110,18 @@ export default function BuildingManagementPage() {
       <main className="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
         <div className="px-4 py-6 sm:px-0">
           
+          {/* Success Message */}
+          {successMessage && (
+            <div className="mb-6 p-4 bg-green-50 border border-green-200 rounded-md">
+              <div className="flex items-center">
+                <svg className="w-5 h-5 text-green-600 mr-2" fill="currentColor" viewBox="0 0 20 20">
+                  <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                </svg>
+                <p className="text-green-800 text-sm font-medium">{successMessage}</p>
+              </div>
+            </div>
+          )}
+
           {/* Buildings Overview */}
           <div className="bg-white shadow rounded-lg mb-8">
             <div className="px-4 py-5 sm:p-6">
@@ -212,14 +249,28 @@ export default function BuildingManagementPage() {
                       Detailed view of flats and tenant information
                     </p>
                   </div>
-                  <button
-                    onClick={() => setSelectedBuildingId(null)}
-                    className="text-gray-400 hover:text-gray-600 transition-colors"
-                  >
-                    <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                    </svg>
-                  </button>
+                  <div className="flex items-center space-x-3">
+                    {/* Add Flats Button */}
+                    <button
+                      onClick={() => setShowBulkCreation(true)}
+                      className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-md text-sm font-medium transition-colors flex items-center space-x-2"
+                    >
+                      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                      </svg>
+                      <span>Add Flats</span>
+                    </button>
+                    
+                    {/* Close Button */}
+                    <button
+                      onClick={() => setSelectedBuildingId(null)}
+                      className="text-gray-400 hover:text-gray-600 transition-colors"
+                    >
+                      <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                      </svg>
+                    </button>
+                  </div>
                 </div>
 
                 {loadingFlats ? (
@@ -234,7 +285,16 @@ export default function BuildingManagementPage() {
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2H5a2 2 0 00-2-2z" />
                       </svg>
                     </div>
-                    <p className="text-gray-500">No flats found in this building</p>
+                    <h4 className="text-lg font-medium text-gray-900 mb-2">No flats in this building</h4>
+                    <p className="text-gray-500 text-sm mb-4">
+                      Get started by adding flats to this building.
+                    </p>
+                    <button
+                      onClick={() => setShowBulkCreation(true)}
+                      className="bg-green-600 hover:bg-green-700 text-white px-6 py-3 rounded-md text-sm font-medium transition-colors"
+                    >
+                      Add Your First Flats
+                    </button>
                   </div>
                 ) : (
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -328,6 +388,18 @@ export default function BuildingManagementPage() {
                 )}
               </div>
             </div>
+          )}
+
+          {/* Bulk Flat Creation Modal */}
+          {showBulkCreation && selectedBuildingId && (
+            <BulkFlatCreation
+              buildingId={selectedBuildingId}
+              buildingName={getSelectedBuilding()?.address_full || 'Selected Building'}
+              addressId={getSelectedBuilding()?.address_id || ''}
+              managerId={profile.id}
+              onClose={() => setShowBulkCreation(false)}
+              onSuccess={handleBulkCreationSuccess}
+            />
           )}
 
         </div>
